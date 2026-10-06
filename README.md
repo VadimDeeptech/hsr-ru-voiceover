@@ -10,7 +10,7 @@
 
 ```bash
 git clone --recursive https://github.com/VadimDeeptech/hsr-ru-voiceover.git
-cd honkai-star-rail
+cd hsr-ru-voiceover
 ```
 
 ### 2. Python и зависимости
