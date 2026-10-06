@@ -51,6 +51,42 @@ for name in ("TextMapRU_0.json", "TextMapRU_1.json", "TextMapMainRU.json"):
         for k, v in load(p).items(): textmap.setdefault(k, v)
 textmap_en = load(os.path.join(TM, "TextMapEN.json"))
 
+# Дополнительные таблицы с текстом по VoiceID
+extra_hash = {}
+
+def load_extra(fname, vid_key, hash_key):
+    """Загружает таблицу вида [{VoiceID: ..., Hash: ...}, ...] -> {vid: hash}"""
+    p = os.path.join(EO, fname)
+    if not os.path.exists(p):
+        return
+    data = load(p)
+    if not isinstance(data, list) or len(data) == 0 or not isinstance(data[0], dict):
+        return
+    for e in data:
+        vid = e.get(vid_key)
+        h = e.get(hash_key)
+        if isinstance(h, dict):
+            h = h.get("Hash")
+        if vid and h:
+            extra_hash[vid] = str(h)
+
+print("Загружаю дополнительные таблицы...")
+load_extra("TarotBookSentence.json", "VoiceID", "Sentence")
+load_extra("TarotFiles.json", "VoiceID", "Sentence")
+load_extra("B51RacingTR.json", "VoiceID", "TRName")
+load_extra("HeartDialTalk.json", "VoiceID", "SDFText")
+print(f"  Доп.таблиц: {len(extra_hash)} записей")
+
+# TalkSentenceMultiVoice: TalkSentenceID -> VoiceIDList -> TalkSentenceConfig hash
+tsmv = load(os.path.join(EO, "TalkSentenceMultiVoice.json"))
+tsmv_map = {}  # voiceid -> sentence_hash
+for e in tsmv:
+    tsid = e.get("TalkSentenceID")
+    if tsid and tsid in sent_hash:
+        for vid in e.get("VoiceIDList", []):
+            tsmv_map[vid] = sent_hash[tsid]
+print(f"  TalkSentenceMultiVoice: {len(tsmv_map)} записей")
+
 print("Сканирую wav-файлы...")
 rows, stats = [], Counter()
 char_re = re.compile(r"^(?:chapter\w*|side\w*|vo)_\w*?_([a-z][a-z0-9]+?)_\d+", re.I)
@@ -93,6 +129,10 @@ for dp, dn, fn in os.walk(DS):
             avatar, h = atlas[voiceid]
         if not h and voiceid in atlas_by_audioid:
             avatar, h = atlas_by_audioid[voiceid]
+        if not h and voiceid in extra_hash:
+            h = extra_hash[voiceid]
+        if not h and voiceid in tsmv_map:
+            h = tsmv_map[voiceid]
         text_ru = textmap.get(h) if h else None
         text_en = textmap_en.get(h) if h else None
         if text_ru: stats["with_ru_text"] += 1

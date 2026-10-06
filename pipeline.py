@@ -126,6 +126,22 @@ def cmd_install(args):
     sys.exit(r.returncode)
 
 
+def cmd_utils(args):
+    """Запуск утилит из scripts/utils/"""
+    util_map = {
+        "find-missing-text": "utils/find_missing_text_sources.py",
+    }
+    script = util_map.get(args.util_cmd)
+    if not script:
+        print(f"Неизвестная утилита: {args.util_cmd}")
+        sys.exit(1)
+    script_path = os.path.join(config.SCRIPTS, script)
+    cmd = [sys.executable, script_path]
+    print(f">>> {' '.join(cmd)}\n")
+    r = subprocess.run(cmd, cwd=config.ROOT)
+    sys.exit(r.returncode)
+
+
 def cmd_full(args):
     """Шаги 1-5: map + scan + generate + build + findpck"""
     cmd_map(args)
@@ -349,6 +365,12 @@ def main():
     p.add_argument("--gender", choices=["m", "f"], default="m")
     p.add_argument("--uninstall", action="store_true")
     p.set_defaults(fn=cmd_install)
+
+    # === Утилиты ===
+    p = sub.add_parser("utils", help="диагностика и утилиты")
+    utils_sub = p.add_subparsers(dest="util_cmd", required=True)
+    utils_sub.add_parser("find-missing-text", help="найти таблицы с текстом для voiceid без текста")
+    p.set_defaults(fn=cmd_utils)
 
     args = ap.parse_args()
     config.ensure_dirs()

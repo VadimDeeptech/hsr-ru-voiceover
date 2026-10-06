@@ -151,6 +151,14 @@ python pipeline.py repack --gender m                  # 8. сборка pck
 > WwiseConsole запускается автоматически. Чтобы пропустить (например, Wwise GUI открыт): `--no-wwise`.
 > `generate` резюмируемый: существующие wav пропускаются, так что прерванный прогон можно продолжить той же командой.
 
+### Утилиты
+
+```bash
+python pipeline.py utils find-missing-text            # диагностика: какие таблицы содержат текст для voiceid без текста
+```
+
+> Полезно после обновления геймдаты, когда появляются новые реплики без текста. Скрипт покажет, в каких таблицах `ExcelOutput` искать текст и какие колонки содержат хэш.
+
 ### Обновление при выходе нового патча игры
 
 Порядок важен — сначала подмодули, потом извлечение wav, потом генерация:
@@ -163,7 +171,12 @@ git submodule update --remote
 
 # 3. Заново извлеки английские wav (шаг 5: AnimeWwise -> Extract All -> hsr-dataset\)
 
-# 4. Полный цикл и установка
+# 4. Диагностика: появились ли новые таблицы с текстом?
+python pipeline.py utils find-missing-text
+
+# 5. Если скрипт нашёл новые таблицы — добавь их в 1_mapper.py (строки load_extra)
+
+# 6. Полный цикл и установка
 python pipeline.py all --gender m
 python pipeline.py install --gender m
 ```
@@ -183,12 +196,13 @@ python pipeline.py install --uninstall
 | Папка | Назначение |
 |-------|-----------|
 | `AnimeWwise/` | Извлечение wav (подмодуль) |
+| `hsr-cosyvoice/` | CosyVoice 3 (Docker) |
 | `hsr-dataset/` | EN wav из игры (gitignored) |
 | `hsr-gamedata/` | Геймдата (подмодуль) |
 | `hsr-run-voice/` | Рабочие файлы (gitignored) |
-| `hsr-cosyvoice/` | CosyVoice 3 (Docker) |
 | `hsr-wwise/` | Проект Wwise |
 | `scripts/` | Отдельные шаги пайплайна |
+| `scripts/utils/` | Диагностические утилиты |
 | `config.py` | Авто-определение путей |
 | `config.toml` | Локальные настройки (gitignored) |
 | `pipeline.py` | Единая точка входа |
