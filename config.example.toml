@@ -1,0 +1,13 @@
+# config.example.toml — шаблон машинно-специфичных настроек.
+# Скопируй в config.toml и поправь пути под себя.
+
+# Путь к корню игры (папка, внутри которой StarRail_Data — обычно ...\Games).
+# Если строка закомментирована — скрипты попробуют найти автоматически.
+# game_dir = "C:/Games/Star Rail Games"
+
+# Путь к WwiseConsole.exe.
+# Если строка закомментирована — скрипты попробуют найти автоматически.
+# wwise_console = "C:/Program Files/Audiokinetic/Wwise 2025.1.11.9262/Authoring/x64/Release/bin/WwiseConsole.exe"
+
+# URL CosyVoice TTS-сервера.
+# cosyvoice_url = "http://localhost:8020"

@@ -1,0 +1,6 @@
+[submodule "AnimeWwise"]
+	path = AnimeWwise
+	url = https://github.com/Escartem/AnimeWwise
+[submodule "hsr-gamedata"]
+	path = hsr-gamedata
+	url = https://gitlab.com/Dimbreath/turnbasedgamedata.git

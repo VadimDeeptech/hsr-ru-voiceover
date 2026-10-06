@@ -1,0 +1,26 @@
+services:
+  cosyvoice:
+    build: .
+    ports:
+      - "8020:8020"
+    volumes:
+      - ./.env:/app/server/.env
+      - models:/app/models
+      - ./datasets:/app/datasets
+      - ./voices:/app/server/voices
+      - ./output:/app/output
+    deploy:
+      resources:
+        limits:
+          memory: 16G
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    shm_size: "8g"
+    stdin_open: true
+    tty: true
+
+volumes:
+  models:

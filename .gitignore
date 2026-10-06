@@ -1,0 +1,16 @@
+.roo
+
+venv
+__pycache__
+*.pyc
+config.toml
+hsr-dataset
+hsr-run-voice
+hsr-wwise/.backup*
+hsr-wwise/.cache*
+hsr-wwise/*.akd
+hsr-wwise/*.prof
+hsr-wwise/*.validationcache
+hsr-wwise/*.wsettings
+hsr-wwise/AkWwiseProjectData.asset
+hsr-wwise/IncrementalSoundBankData.xml

@@ -1,0 +1,11 @@
+# Зависимости HSR RU Voiceover (корень проекта)
+# Python 3.12+ (Windows)
+# Установка: pip install -r requirements.txt   (с активным корневым venv)
+#
+# requests — HTTP-клиент для CosyVoice API (:8020).
+# PyQt5 — GUI для AnimeWwise (извлечение wav из игры).
+# Остальное — stdlib: os, csv, re, json, struct, shutil, glob, subprocess, collections.
+
+requests==2.34.2
+PyQt5==5.15.11
+PyQt5_sip==12.15.0
