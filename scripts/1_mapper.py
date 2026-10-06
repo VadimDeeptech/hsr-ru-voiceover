@@ -35,9 +35,13 @@ for e in load(os.path.join(EO, "TalkSentenceConfig.json")):
 
 print("Загружаю VoiceAtlas...")
 atlas = {}
+atlas_by_audioid = {}
 for e in load(os.path.join(EO, "VoiceAtlas.json")):
     h = e.get("Voice_M", {}).get("Hash")
-    if h: atlas[e["VoiceID"]] = (e.get("AvatarID"), str(h))
+    if h:
+        atlas[e["VoiceID"]] = (e.get("AvatarID"), str(h))
+        if e.get("AudioID"):
+            atlas_by_audioid[e["AudioID"]] = (e.get("AvatarID"), str(h))
 
 print("Загружаю TextMap RU + EN...")
 textmap = {}
@@ -87,6 +91,8 @@ for dp, dn, fn in os.walk(DS):
         h, avatar = sent_hash.get(voiceid), ""
         if not h and voiceid in atlas:
             avatar, h = atlas[voiceid]
+        if not h and voiceid in atlas_by_audioid:
+            avatar, h = atlas_by_audioid[voiceid]
         text_ru = textmap.get(h) if h else None
         text_en = textmap_en.get(h) if h else None
         if text_ru: stats["with_ru_text"] += 1

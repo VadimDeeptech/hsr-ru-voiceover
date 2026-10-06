@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 4_build_repack_list.py — repack_list.csv: file name -> wem_id (English-вариант из hkrpg.map)
-Авто-сканирует все chapterN.csv в hsr-run-voice, добавляет колонку src (папка в output_ru).
+Авто-сканирует все *.csv в hsr-run-voice (chapterN, sideN, companionN, vo, ambient, archive, ...),
+добавляет колонку src (папка в output_ru).
 """
 import os, csv, re, sys
 
@@ -12,12 +13,18 @@ AW = config.AWWISE
 sys.path.insert(0, AW)
 from mapper import Mapper
 
-# авто-скан chapterN.csv -> папка с wav в output_ru
+# авто-скан *.csv -> папка с wav в output_ru
 SOURCES = []
 for f in sorted(os.listdir(config.RUN)):
-    m = re.match(r"chapter(\d+)\.csv$", f)
+    if not f.endswith(".csv") or f == "mapping.csv":
+        continue
+    # chapterN.csv -> chapterN, side0.csv -> side0, companion1.csv -> companion1, ...
+    m = re.match(r"(chapter\d+|side\d+|Side\d+|companion\d+|vo|ambient|archive|CG|bgm|chapter\w+)\.csv$", f)
     if m:
-        SOURCES.append((f, f"chapter{m.group(1)}"))
+        SOURCES.append((f, m.group(1)))
+    else:
+        # fallback: любой другой .csv используем как есть
+        SOURCES.append((f, f[:-4]))
 
 OUT = os.path.join(config.REPACK, "repack_list.csv")
 os.makedirs(os.path.dirname(OUT), exist_ok=True)

@@ -10,9 +10,11 @@
 - резюмируемый
 
 Запуск:
-    python 3_generate.py --chapter 0      # только chapter0
-    python 3_generate.py --all            # все найденные главы
-    python 3_generate.py --all --limit 20 # тестовый прогон
+    python 3_generate.py --chapter 0        # только chapter0
+    python 3_generate.py --all              # все найденные главы
+    python 3_generate.py --category side0   # только side0
+    python 3_generate.py --all-categories   # все категории
+    python 3_generate.py --all --limit 20   # тестовый прогон
 """
 import os, csv, re, time, struct, subprocess, argparse
 import requests
@@ -23,7 +25,7 @@ import config
 
 NICK  = {"m": "Первопроходец", "f": "Первопроходчица"}
 GENDER_RE = re.compile(r"\{[FM]#|\{NICKNAME|\{TEXTJOIN#54", re.I)
-NAME_RE   = re.compile(r"chapter\d+_(.+?)_([a-z][a-z0-9]*)_(\d+)(?:_[a-z])?$", re.I)
+NAME_RE   = re.compile(r"(?:chapter|side|companion)\w*?_(.+?)_([a-z][a-z0-9]*)_(\d+)(?:_[a-z])?$", re.I)
 
 def clean_text(text, gender="m"):
     text = re.sub(r"\{RUBY_B#[^}]*\}([^{]*)\{RUBY_E#\}", r"\1", text)
@@ -82,10 +84,10 @@ def row_gender(r, base):
         return b[-1], True
     return "", False
 
-def generate_chapter(chapter, limit=None):
-    """Генерация одной главы. Возвращает (done, skip, fail)."""
-    csv_path = os.path.join(config.RUN, f"chapter{chapter}.csv")
-    out_dir  = os.path.join(config.RUN, "output_ru", f"chapter{chapter}")
+def generate_chapter(csv_name, out_name, limit=None):
+    """Генерация одной категории. Возвращает (done, skip, fail)."""
+    csv_path = os.path.join(config.RUN, csv_name)
+    out_dir  = os.path.join(config.RUN, "output_ru", out_name)
     os.makedirs(out_dir, exist_ok=True)
 
     if not os.path.exists(csv_path):
@@ -116,7 +118,7 @@ def generate_chapter(chapter, limit=None):
 
         g, from_suffix = row_gender(r, base)
         if from_suffix and "gender" not in r and not fallback_warned:
-            print("  !! в chapterN.csv нет колонки gender — вывожу из суффикса имени.")
+            print("  !! в csv нет колонки gender — вывожу из суффикса имени.")
             print("     Лучше пересобрать: pipeline.py map -> pipeline.py scan")
             fallback_warned = True
 
@@ -132,7 +134,7 @@ def generate_chapter(chapter, limit=None):
 
     if limit:
         tasks = tasks[:limit]
-    print(f"chapter{chapter}: задач {len(tasks)} (текстово-гендерных строк: {gendered})")
+    print(f"{out_name}: задач {len(tasks)} (текстово-гендерных строк: {gendered})")
 
     rep_path = os.path.join(out_dir, "gen_report.csv")
     new_rep = not os.path.exists(rep_path)
@@ -141,8 +143,8 @@ def generate_chapter(chapter, limit=None):
         wr = csv.writer(rep, delimiter=";")
         if new_rep:
             wr.writerow(["file", "status", "orig_sec", "gen_sec", "ratio", "sec_taken", "note"])
-        for i, (r, out_name, text) in enumerate(tasks, 1):
-            dst = os.path.join(out_dir, out_name + ".wav")
+        for i, (r, out_name_wav, text) in enumerate(tasks, 1):
+            dst = os.path.join(out_dir, out_name_wav + ".wav")
             if os.path.exists(dst):
                 skip += 1; continue
             src = os.path.join(config.DATASET, r["file"])
@@ -162,7 +164,7 @@ def generate_chapter(chapter, limit=None):
                     g = wav_duration(dst)
                     wr.writerow([r["file"], "OK", f"{orig:.2f}" if orig else "?",
                                  f"{g:.2f}" if g else "?",
-                                 f"{g/orig:.2f}" if g and orig else "", f"{took:.1f}", out_name])
+                                 f"{g/orig:.2f}" if g and orig else "", f"{took:.1f}", out_name_wav])
                 else:
                     fail += 1
                     wr.writerow([r["file"], f"HTTP {resp.status_code}", "", "", "", f"{took:.1f}", resp.text[:150]])
@@ -173,7 +175,7 @@ def generate_chapter(chapter, limit=None):
             if i % 10 == 0 or i == len(tasks):
                 print(f"[{i}/{len(tasks)}] ok={done} skip={skip} fail={fail}")
             time.sleep(0.3)
-    print(f"chapter{chapter}: {done} сгенерировано, {skip} пропущено, {fail} ошибок")
+    print(f"{out_name}: {done} сгенерировано, {skip} пропущено, {fail} ошибок")
     return done, skip, fail
 
 def main():
@@ -181,29 +183,60 @@ def main():
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--chapter", type=int, help="номер главы")
     g.add_argument("--all", action="store_true", help="все найденные главы")
+    g.add_argument("--category", type=str, help="конкретная категория (side0, companion1, vo, ...)")
+    g.add_argument("--all-categories", action="store_true",
+                   help="все категории (chapters + sides + companions + vo + ambient + archive + ...)")
     ap.add_argument("--limit", type=int, default=None, help="лимит задач (для теста)")
     args = ap.parse_args()
 
-    if args.all:
-        # авто-скан: какие chapterN.csv есть в hsr-run-voice
+    # --- Режим --chapter / --all (только главы) ---
+    if args.chapter is not None or args.all:
         chapters = []
-        for f in os.listdir(config.RUN):
-            m = re.match(r"chapter(\d+)\.csv$", f)
-            if m:
-                chapters.append(int(m.group(1)))
-        chapters.sort()
-        if not chapters:
-            print("Не найдено ни одного chapterN.csv. Сначала запусти: pipeline.py scan --all")
-            sys.exit(1)
-    else:
-        chapters = [args.chapter]
+        if args.all:
+            # авто-скан: какие chapterN.csv есть в hsr-run-voice
+            for f in os.listdir(config.RUN):
+                m = re.match(r"chapter(\d+)\.csv$", f)
+                if m:
+                    chapters.append(int(m.group(1)))
+            chapters.sort()
+            if not chapters:
+                print("Не найдено ни одного chapterN.csv. Сначала запусти: pipeline.py scan --all")
+                sys.exit(1)
+        else:
+            chapters = [args.chapter]
 
-    total_done = total_skip = total_fail = 0
-    for ch in chapters:
-        d, s, f = generate_chapter(ch, args.limit)
-        total_done += d; total_skip += s; total_fail += f
+        total_done = total_skip = total_fail = 0
+        for ch in chapters:
+            d, s, f = generate_chapter(f"chapter{ch}.csv", f"chapter{ch}", args.limit)
+            total_done += d; total_skip += s; total_fail += f
 
-    print(f"\n=== ИТОГО: {total_done} сгенерировано, {total_skip} пропущено, {total_fail} ошибок ===")
+        print(f"\n=== ИТОГО: {total_done} сгенерировано, {total_skip} пропущено, {total_fail} ошибок ===")
+        return
+
+    # --- Режим --category ---
+    if args.category:
+        d, s, f = generate_chapter(f"{args.category}.csv", args.category, args.limit)
+        print(f"\n=== ИТОГО: {d} сгенерировано, {s} пропущено, {f} ошибок ===")
+        return
+
+    # --- Режим --all-categories ---
+    if args.all_categories:
+        # Находим все *.csv в RUN, которые не mapping.csv
+        all_csvs = [f for f in os.listdir(config.RUN)
+                    if f.endswith(".csv") and f != "mapping.csv"]
+        # Сначала главы
+        chapters = sorted([c for c in all_csvs if re.match(r"chapter\d+\.csv$", c)],
+                          key=lambda x: int(re.search(r"\d+", x).group()))
+        # Потом остальные
+        others = sorted([c for c in all_csvs if not re.match(r"chapter\d+\.csv$", c)])
+
+        total_done = total_skip = total_fail = 0
+        for csv_name in chapters + others:
+            cat_name = csv_name[:-4]  # без .csv
+            d, s, f = generate_chapter(csv_name, cat_name, args.limit)
+            total_done += d; total_skip += s; total_fail += f
+
+        print(f"\n=== ИТОГО: {total_done} сгенерировано, {total_skip} пропущено, {total_fail} ошибок ===")
 
 if __name__ == "__main__":
     main()

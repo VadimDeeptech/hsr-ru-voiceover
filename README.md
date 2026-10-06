@@ -96,6 +96,15 @@ python pipeline.py doctor
 
 ## Генерация озвучки
 
+### Весь контент (рекомендуется)
+
+```bash
+python pipeline.py all --gender m
+python pipeline.py install --gender m
+```
+
+> Команда `all` обрабатывает **всё**: главы + side + companion + vo + ambient + archive + событийные главы.
+
 ### Одна глава
 
 ```bash
@@ -106,11 +115,41 @@ python pipeline.py install --gender m
 ### Все главы
 
 ```bash
-python pipeline.py all --gender m
+python pipeline.py chapter --gender m
 python pipeline.py install --gender m
 ```
 
+### Одна побочная категория
+
+```bash
+python pipeline.py extra side0 --gender m
+python pipeline.py install --gender m
+```
+
+### Весь побочный контент (без глав)
+
+```bash
+python pipeline.py extra --gender m
+python pipeline.py install --gender m
+```
+
+### Отдельные шаги (отладка)
+
+```bash
+python pipeline.py map                                # 1. wav -> mapping.csv
+python pipeline.py scan --all-categories              # 2. фильтр по всем категориям
+python pipeline.py scan --category side0              #    ...или по одной
+python pipeline.py generate --all-categories          # 3. TTS для всех категорий
+python pipeline.py generate --category vo --limit 50  #    ...тест на 50 репликах vo
+python pipeline.py build                              # 4. repack_list.csv
+python pipeline.py findpck                            # 5. id_to_pck.csv
+python pipeline.py wwise --gender m                   # 6. staging + wsources
+python pipeline.py collect --gender m                 # 7. сбор wem
+python pipeline.py repack --gender m                  # 8. сборка pck
+```
+
 > WwiseConsole запускается автоматически. Чтобы пропустить (например, Wwise GUI открыт): `--no-wwise`.
+> `generate` резюмируемый: существующие wav пропускаются, так что прерванный прогон можно продолжить той же командой.
 
 ### Обновление при выходе нового патча игры
 
@@ -130,7 +169,7 @@ python pipeline.py install --gender m
 ```
 
 > `--update` (например, `python pipeline.py all --gender m --update`) делает то же, что шаг 2, — `git submodule update --remote`. Если подмодули уже обновлены вручную, флаг можно не указывать.
-> `generate` пропускает уже существующие файлы — генерируются только новые реплики.
+> `generate` пропускает уже существующие файлы — генерируются только новые реплики патча.
 > Без шага 3 новые реплики патча не сгенерируются: wav-референсы появляются в pck игры, а не в подмодулях.
 
 ### Откат мода

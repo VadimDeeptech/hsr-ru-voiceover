@@ -68,7 +68,11 @@ def cmd_map(_args):
 
 def cmd_scan(args):
     a = []
-    if args.all:
+    if getattr(args, 'all_categories', False):
+        a.append("--all-categories")
+    elif getattr(args, 'category', None):
+        a += ["--category", args.category]
+    elif args.all:
         a.append("--all")
     elif args.chapter is not None:
         a += ["--chapter", str(args.chapter)]
@@ -77,7 +81,11 @@ def cmd_scan(args):
 
 def cmd_generate(args):
     a = []
-    if args.all:
+    if getattr(args, 'all_categories', False):
+        a.append("--all-categories")
+    elif getattr(args, 'category', None):
+        a += ["--category", args.category]
+    elif args.all:
         a.append("--all")
     elif args.chapter is not None:
         a += ["--chapter", str(args.chapter)]
@@ -170,12 +178,59 @@ def _update_submodules():
 
 
 def cmd_chapter(args):
-    """Полный цикл для одной главы: map + scan + generate + build + findpck + wwise + collect + repack"""
-    print(f"=== Глава {args.chapter}, пол {args.gender} ===\n")
+    """Полный цикл для глав: одна или все"""
+    if args.chapter is not None:
+        print(f"=== Глава {args.chapter}, пол {args.gender} ===\n")
+        if args.update:
+            _update_submodules()
+        cmd_map(args)
+        args.all = False  # для scan/generate
+        cmd_scan(args)
+        cmd_generate(args)
+        cmd_build(args)
+        cmd_findpck(args)
+        cmd_wwise(args)
+        if not args.no_wwise and _run_wwise_console(args.gender):
+            cmd_collect(args)
+            cmd_repack(args)
+            print(f"\n=== Готово. Для установки: python pipeline.py install --gender {args.gender}")
+        else:
+            print(f"\n=== Запусти WwiseConsole (команда выше), затем: ===")
+            print(f"  python pipeline.py collect --gender {args.gender}")
+            print(f"  python pipeline.py repack --gender {args.gender}")
+            print(f"  python pipeline.py install --gender {args.gender}")
+    else:
+        # все главы
+        print(f"=== Все главы, пол {args.gender} ===\n")
+        if args.update:
+            _update_submodules()
+        cmd_map(args)
+        args.all = True  # для scan/generate
+        args.all_categories = False
+        cmd_scan(args)
+        cmd_generate(args)
+        cmd_build(args)
+        cmd_findpck(args)
+        cmd_wwise(args)
+        if not args.no_wwise and _run_wwise_console(args.gender):
+            cmd_collect(args)
+            cmd_repack(args)
+            print(f"\n=== Готово. Для установки: python pipeline.py install --gender {args.gender}")
+        else:
+            print(f"\n=== Запусти WwiseConsole (команда выше), затем: ===")
+            print(f"  python pipeline.py collect --gender {args.gender}")
+            print(f"  python pipeline.py repack --gender {args.gender}")
+            print(f"  python pipeline.py install --gender {args.gender}")
+
+
+def cmd_all(args):
+    """Полный цикл для всего контента: map + scan + generate + build + findpck + wwise + collect + repack"""
+    print(f"=== Весь контент (главы + побочка), пол {args.gender} ===\n")
     if args.update:
         _update_submodules()
     cmd_map(args)
-    args.all = False  # для scan/generate
+    args.all = False
+    args.all_categories = True
     cmd_scan(args)
     cmd_generate(args)
     cmd_build(args)
@@ -192,13 +247,19 @@ def cmd_chapter(args):
         print(f"  python pipeline.py install --gender {args.gender}")
 
 
-def cmd_all(args):
-    """Полный цикл для всех глав: map + scan + generate + build + findpck + wwise + collect + repack"""
-    print(f"=== Все главы, пол {args.gender} ===\n")
+def cmd_extra(args):
+    """Полный цикл для побочного контента: map + scan + generate + build + findpck + wwise + collect + repack"""
+    cat = args.category or "все категории"
+    print(f"=== Побочный контент ({cat}), пол {args.gender} ===\n")
     if args.update:
         _update_submodules()
     cmd_map(args)
-    args.all = True  # для scan/generate
+    if args.category:
+        args.all = False
+        args.all_categories = False
+    else:
+        args.all = False
+        args.all_categories = True
     cmd_scan(args)
     cmd_generate(args)
     cmd_build(args)
@@ -219,6 +280,8 @@ def add_chapter_args(p):
     g = p.add_mutually_exclusive_group()
     g.add_argument("--chapter", type=int, help="номер главы (0, 1, 2, ...)")
     g.add_argument("--all", action="store_true", help="все найденные главы")
+    g.add_argument("--category", type=str, help="конкретная категория (side0, companion1, vo, ...)")
+    g.add_argument("--all-categories", action="store_true", help="все категории (chapters + sides + companions + vo + ...)")
 
 
 def main():
@@ -227,27 +290,38 @@ def main():
 
     sub.add_parser("doctor", help="проверка окружения").set_defaults(fn=cmd_doctor)
 
-    # Полный цикл для одной главы
-    p = sub.add_parser("chapter", help="полный цикл для главы N (без install)")
-    p.add_argument("chapter", type=int, help="номер главы")
+    # === Полные циклы (map + scan + generate + build + findpck + wwise + collect + repack) ===
+    # Одна глава или все главы
+    p = sub.add_parser("chapter", help="полный цикл для глав: одна или все (без install)")
+    p.add_argument("chapter", type=int, nargs="?", default=None, help="номер главы (0, 1, 2, ...)")
     p.add_argument("--gender", choices=["m", "f"], default="m")
     p.add_argument("--limit", type=int, default=None)
     p.add_argument("--no-wwise", action="store_true", help="не запускать WwiseConsole автоматически")
     p.add_argument("--update", action="store_true", help="обновить сабмодули перед генерацией")
     p.set_defaults(fn=cmd_chapter)
 
-    # Полный цикл для всех глав
-    p = sub.add_parser("all", help="полный цикл для всех глав (без install)")
+    # Побочный контент: одна категория или все
+    p = sub.add_parser("extra", help="полный цикл для побочного контента: одна категория или все (без install)")
+    p.add_argument("category", type=str, nargs="?", default=None,
+                   help="категория (side0, companion1, vo, ambient, archive, ...)")
+    p.add_argument("--gender", choices=["m", "f"], default="m")
+    p.add_argument("--limit", type=int, default=None)
+    p.add_argument("--no-wwise", action="store_true", help="не запускать WwiseConsole автоматически")
+    p.add_argument("--update", action="store_true", help="обновить сабмодули перед генерацией")
+    p.set_defaults(fn=cmd_extra)
+
+    # Весь контент (главы + побочка)
+    p = sub.add_parser("all", help="полный цикл для всего контента: главы + побочка (без install)")
     p.add_argument("--gender", choices=["m", "f"], default="m")
     p.add_argument("--limit", type=int, default=None)
     p.add_argument("--no-wwise", action="store_true", help="не запускать WwiseConsole автоматически")
     p.add_argument("--update", action="store_true", help="обновить сабмодули перед генерацией")
     p.set_defaults(fn=cmd_all)
 
-    # Отдельные шаги (для отладки)
+    # === Отдельные шаги (для отладки) ===
     sub.add_parser("map", help="шаг 1: маппинг").set_defaults(fn=cmd_map)
 
-    p = sub.add_parser("scan", help="шаг 2: фильтр по главам")
+    p = sub.add_parser("scan", help="шаг 2: фильтр по главам и категориям")
     add_chapter_args(p); p.set_defaults(fn=cmd_scan)
 
     p = sub.add_parser("generate", help="шаг 3: генерация TTS")
@@ -270,7 +344,7 @@ def main():
     p.add_argument("--gender", choices=["m", "f"], required=True)
     p.set_defaults(fn=cmd_repack)
 
-    # Установка — отдельно!
+    # === Установка ===
     p = sub.add_parser("install", help="шаг 9: установка в игру")
     p.add_argument("--gender", choices=["m", "f"], default="m")
     p.add_argument("--uninstall", action="store_true")
