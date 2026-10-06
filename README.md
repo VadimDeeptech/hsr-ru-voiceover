@@ -101,13 +101,24 @@ python pipeline.py install --gender m
 
 ### Обновление при выходе нового патча игры
 
+Порядок важен — сначала подмодули, потом извлечение wav, потом генерация:
+
 ```bash
-python pipeline.py all --gender m --update
+# 1. Обнови игру через лаунчер
+
+# 2. Обнови подмодули (AnimeWwise получит актуальный asset map под новый патч, hsr-gamedata — тексты нового патча)
+git submodule update --remote
+
+# 3. Заново извлеки английские wav (шаг 5: AnimeWwise -> Extract All -> hsr-dataset\)
+
+# 4. Полный цикл и установка
+python pipeline.py all --gender m
 python pipeline.py install --gender m
 ```
 
-> `--update` обновляет подмодули (`git submodule update --remote`), затем полный цикл.
+> `--update` (например, `python pipeline.py all --gender m --update`) делает то же, что шаг 2, — `git submodule update --remote`. Если подмодули уже обновлены вручную, флаг можно не указывать.
 > `generate` пропускает уже существующие файлы — генерируются только новые реплики.
+> Без шага 3 новые реплики патча не сгенерируются: wav-референсы появляются в pck игры, а не в подмодулях.
 
 ### Откат мода
 
