@@ -65,6 +65,19 @@ cd ..
 
 ### 6. Docker (CosyVoice)
 
+#### 6.1 Скачивание модели
+
+Модель **не скачивается автоматически** при запуске контейнера — её нужно скачать заранее на хост:
+
+```bash
+cd hsr-cosyvoice
+python download_model.py
+```
+
+Скрипт скачает `FunAudioLLM/Fun-CosyVoice3-0.5B` с HuggingFace в `hsr-cosyvoice\models\Fun-CosyVoice3-0.5B`.
+
+#### 6.2 Запуск
+
 ```bash
 cd hsr-cosyvoice
 docker compose up -d

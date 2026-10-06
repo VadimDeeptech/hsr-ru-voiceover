@@ -14,3 +14,7 @@ hsr-wwise/*.validationcache
 hsr-wwise/*.wsettings
 hsr-wwise/AkWwiseProjectData.asset
 hsr-wwise/IncrementalSoundBankData.xml
+hsr-cosyvoice/models
+hsr-cosyvoice/output
+hsr-cosyvoice/datasets
+hsr-cosyvoice/voices

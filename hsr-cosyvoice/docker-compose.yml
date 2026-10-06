@@ -5,7 +5,7 @@ services:
       - "8020:8020"
     volumes:
       - ./.env:/app/server/.env
-      - models:/app/models
+      - ./models:/app/models
       - ./datasets:/app/datasets
       - ./voices:/app/server/voices
       - ./output:/app/output
@@ -21,6 +21,3 @@ services:
     shm_size: "8g"
     stdin_open: true
     tty: true
-
-volumes:
-  models:
