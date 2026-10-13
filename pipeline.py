@@ -20,6 +20,7 @@ pipeline.py — единая точка входа для всех шагов п
     python pipeline.py repack --gender m|f
 """
 import argparse
+import datetime
 import os
 import subprocess
 import sys
@@ -33,15 +34,57 @@ if sys.platform == "win32":
 import config
 
 
+class _Tee:
+    """Дублирует всё, что пишется в поток, в файл лога."""
+
+    def __init__(self, stream, log):
+        self._stream = stream
+        self._log = log
+
+    def write(self, s):
+        self._stream.write(s)
+        self._stream.flush()
+        self._log.write(s)
+        return len(s)
+
+    def flush(self):
+        self._stream.flush()
+        self._log.flush()
+
+    def __getattr__(self, name):
+        return getattr(self._stream, name)
+
+
+def setup_logging(cmd_name):
+    """Направляет вывод в консоль и в logs/pipeline_<дата>_<время>_<команда>.log."""
+    stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    path = os.path.join(config.LOGS, f"pipeline_{stamp}_{cmd_name}.log")
+    log = open(path, "w", encoding="utf-8", buffering=1)
+    sys.stdout = _Tee(sys.stdout, log)
+    sys.stderr = _Tee(sys.stderr, log)
+    print(f"Лог: {path}\n")
+
+
+def run_cmd(cmd, encoding="utf-8"):
+    """Запускает процесс, дублируя его вывод в консоль и лог. Возвращает код возврата."""
+    env = dict(os.environ, PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8")
+    p = subprocess.Popen(cmd, cwd=config.ROOT, env=env,
+                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                         encoding=encoding, errors="replace")
+    for line in p.stdout:
+        print(line, end="")
+    return p.wait()
+
+
 def run_script(name, args_list=None):
     """Запускает scripts/<name> с переданными аргументами."""
     script = os.path.join(config.SCRIPTS, name)
     cmd = [sys.executable, script] + (args_list or [])
     print(f">>> {' '.join(cmd)}\n")
-    r = subprocess.run(cmd, cwd=config.ROOT)
-    if r.returncode != 0:
-        print(f"\n!!! {name} завершился с кодом {r.returncode}")
-        sys.exit(r.returncode)
+    rc = run_cmd(cmd)
+    if rc != 0:
+        print(f"\n!!! {name} завершился с кодом {rc}")
+        sys.exit(rc)
 
 
 def cmd_doctor(_args):
@@ -122,8 +165,8 @@ def cmd_install(args):
     else:
         cmd += ["-Gender", args.gender]
     print(f">>> {' '.join(cmd)}\n")
-    r = subprocess.run(cmd, cwd=config.ROOT)
-    sys.exit(r.returncode)
+    # PowerShell пишет в pipe в OEM-кодировке консоли
+    sys.exit(run_cmd(cmd, encoding="oem"))
 
 
 def cmd_utils(args):
@@ -138,8 +181,7 @@ def cmd_utils(args):
     script_path = os.path.join(config.SCRIPTS, script)
     cmd = [sys.executable, script_path]
     print(f">>> {' '.join(cmd)}\n")
-    r = subprocess.run(cmd, cwd=config.ROOT)
-    sys.exit(r.returncode)
+    sys.exit(run_cmd(cmd))
 
 
 def cmd_full(args):
@@ -175,9 +217,9 @@ def _run_wwise_console(gender):
         "--verbose"
     ]
     print(f">>> Автозапуск WwiseConsole...\n")
-    r = subprocess.run(cmd, cwd=config.ROOT)
-    if r.returncode != 0:
-        print(f"!! WwiseConsole завершился с кодом {r.returncode}")
+    rc = run_cmd(cmd)
+    if rc != 0:
+        print(f"!! WwiseConsole завершился с кодом {rc}")
         return False
     print("WwiseConsole: конвертация завершена успешно")
     return True
@@ -186,10 +228,10 @@ def _run_wwise_console(gender):
 def _update_submodules():
     """git submodule update --remote"""
     print(">>> Обновление сабмодулей (git submodule update --remote)\n")
-    r = subprocess.run(["git", "submodule", "update", "--remote"], cwd=config.ROOT)
-    if r.returncode != 0:
+    rc = run_cmd(["git", "submodule", "update", "--remote"])
+    if rc != 0:
         print("!! Ошибка обновления сабмодулей")
-        sys.exit(r.returncode)
+        sys.exit(rc)
     print()
 
 
@@ -374,6 +416,7 @@ def main():
 
     args = ap.parse_args()
     config.ensure_dirs()
+    setup_logging(args.cmd)
     args.fn(args)
 
 

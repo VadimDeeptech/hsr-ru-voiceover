@@ -4,6 +4,7 @@ venv
 __pycache__
 *.pyc
 config.toml
+logs
 hsr-dataset
 hsr-run-voice
 hsr-wwise/.backup*

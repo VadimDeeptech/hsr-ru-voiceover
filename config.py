@@ -17,6 +17,7 @@ GAMEDATA  = os.path.join(ROOT, "hsr-gamedata")
 AWWISE    = os.path.join(ROOT, "AnimeWwise")
 WPROJ     = os.path.join(ROOT, "hsr-wwise", "hsr-wwise.wproj")
 SCRIPTS   = os.path.join(ROOT, "scripts")
+LOGS      = os.path.join(ROOT, "logs")
 
 # Пути внутри hsr-run-voice
 REPACK    = os.path.join(RUN, "repack")
@@ -99,7 +100,7 @@ COSYVOICE_URL = _cosyvoice_url
 
 def ensure_dirs():
     """Создаёт рабочие папки, если их нет."""
-    for d in (RUN, REPACK, PCK_BACKUP):
+    for d in (RUN, REPACK, PCK_BACKUP, LOGS):
         os.makedirs(d, exist_ok=True)
 
 def check_env():
