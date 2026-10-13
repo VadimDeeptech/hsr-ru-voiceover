@@ -50,24 +50,46 @@ def scan_chapter(chapter, csv_path, out_dir):
 
 
 def scan_category(cat_name, csv_path, out_dir):
-    """Фильтрует mapping.csv по категории (side0, companion1, vo, ambient, ...) -> <cat>.csv"""
-    out_path = os.path.join(out_dir, f"{cat_name}.csv")
+    """Фильтрует mapping.csv по категории (side0, companion1, vo, ambient, ...) -> <cat>.csv
+
+    Категория сравнивается без учёта регистра: Side0 и side0 идут в один csv,
+    иначе на Windows второй файл затирает первый.
+    """
+    out_name = f"{cat_name}.csv"
+    out_path = os.path.join(out_dir, out_name)
     rows_out = []
     chars = defaultdict(lambda: [0, 0])
+    seen = {}       # имя файла -> папка категории, откуда оно пришло
+    clashes = []
 
     with open(csv_path, encoding="utf-8-sig") as f:
         for row in csv.DictReader(f, delimiter=";"):
             parts = row["file"].replace("/", "\\").split("\\")
-            if len(parts) < 3 or parts[1] != "voice" or parts[2] != cat_name:
+            if len(parts) < 3 or parts[1] != "voice" or parts[2].lower() != cat_name.lower():
                 continue
+            stem = os.path.splitext(parts[-1])[0].lower()
+            if seen.setdefault(stem, parts[2]) != parts[2]:
+                clashes.append(f"{stem}: {seen[stem]} и {parts[2]}")
             rows_out.append(row)
             ch = row["character"] or "(не определён)"
             chars[ch][0] += 1
             if row["text_ru"].strip():
                 chars[ch][1] += 1
 
+    if clashes:
+        # в output_ru оба файла легли бы под одним именем — один затёр бы другой
+        print(f"!! {cat_name}: одинаковые имена файлов в папках с разным регистром ({len(clashes)}):")
+        for c in clashes[:20]:
+            print(f"   {c}")
+        sys.exit(1)
+
     if not rows_out:
         return 0, 0
+
+    # старый csv с тем же именем в другом регистре (Side0.csv при записи side0.csv)
+    for f in os.listdir(out_dir):
+        if f.lower() == out_name.lower() and f != out_name:
+            os.remove(os.path.join(out_dir, f))
 
     with open(out_path, "w", encoding="utf-8-sig", newline="") as f:
         wr = csv.DictWriter(f, delimiter=";", fieldnames=rows_out[0].keys())
@@ -78,14 +100,19 @@ def scan_category(cat_name, csv_path, out_dir):
 
 
 def find_categories(csv_path):
-    """Находит все категории в mapping.csv (voice/<cat>/...)."""
-    cats = set()
+    """Находит все категории в mapping.csv (voice/<cat>/...).
+
+    Варианты, различающиеся только регистром (Side0/side0), считаются одной
+    категорией; из них берётся вариант со строчной буквы.
+    """
+    cats = {}
     with open(csv_path, encoding="utf-8-sig") as f:
         for row in csv.DictReader(f, delimiter=";"):
             parts = row["file"].replace("/", "\\").split("\\")
             if len(parts) >= 3 and parts[1] == "voice":
-                cats.add(parts[2])
-    return sorted(cats)
+                key = parts[2].lower()
+                cats[key] = max(cats.get(key, parts[2]), parts[2])
+    return sorted(cats.values())
 
 
 def main():
@@ -134,11 +161,13 @@ def main():
 
     # --- Режим --category ---
     if args.category:
-        total, with_ru = scan_category(args.category, csv_path, out_dir)
+        known = {c.lower(): c for c in find_categories(csv_path)}
+        cat = known.get(args.category.lower(), args.category)
+        total, with_ru = scan_category(cat, csv_path, out_dir)
         if total:
-            print(f"{args.category}: {total} реплик, с RU: {with_ru}")
+            print(f"{cat}: {total} реплик, с RU: {with_ru}")
         else:
-            print(f"{args.category}: нет реплик")
+            print(f"{cat}: нет реплик")
         return
 
     # --- Режим --all-categories ---
