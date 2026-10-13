@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-4_build_repack_list.py — repack_list.csv: file name -> wem_id (English-вариант из hkrpg.map)
+06_build_repack_list.py — repack_list.csv: file name -> wem_id (English-вариант из hkrpg.map)
 Авто-сканирует все *.csv в hsr-run-voice (chapterN, sideN, companionN, vo, ambient, archive, ...),
 добавляет колонку src (папка в output_ru).
 """

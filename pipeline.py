@@ -12,6 +12,7 @@ pipeline.py — единая точка входа для всех шагов п
     # Отладка/разработка (отдельные шаги):
     python pipeline.py map
     python pipeline.py scan [--chapter N|--all]
+    python pipeline.py audit                      — сверка звука оригинала с текстом
     python pipeline.py generate [--chapter N|--all] [--limit N]
     python pipeline.py build
     python pipeline.py findpck
@@ -20,10 +21,13 @@ pipeline.py — единая точка входа для всех шагов п
     python pipeline.py repack --gender m|f
 """
 import argparse
+import csv
 import datetime
+import glob
 import os
 import subprocess
 import sys
+import threading
 
 # UTF-8 для консоли Windows
 if sys.platform == "win32":
@@ -106,7 +110,7 @@ def cmd_doctor(_args):
 
 
 def cmd_map(_args):
-    run_script("1_mapper.py")
+    run_script("01_mapper.py")
 
 
 def cmd_scan(args):
@@ -119,7 +123,64 @@ def cmd_scan(args):
         a.append("--all")
     elif args.chapter is not None:
         a += ["--chapter", str(args.chapter)]
-    run_script("2_scan.py", a)
+    run_script("02_scan.py", a)
+
+
+AUDIT_IMAGE = "hsr-cosyvoice-cosyvoice"   # образ CosyVoice: в нём уже есть torch + whisper
+
+
+def _audit_pending():
+    """Сколько записей из mapping.csv ещё не распознано."""
+    done = set()
+    for p in glob.glob(os.path.join(config.RUN, "asr", "asr_*.csv")):
+        with open(p, encoding="utf-8-sig", newline="") as f:
+            done |= {r["file"] for r in csv.DictReader(f, delimiter=";")}
+    with open(os.path.join(config.RUN, "mapping.csv"), encoding="utf-8-sig", newline="") as f:
+        return sum(1 for r in csv.DictReader(f, delimiter=";") if r["file"] not in done)
+
+
+def _run_transcribe():
+    """Распознаёт речь в ещё не проверенных оригиналах (Whisper в контейнерах на образе CosyVoice)."""
+    pending = _audit_pending()
+    if not pending:
+        print("Сверка: новых записей для распознавания нет.\n")
+        return
+    # распознавание упирается в один поток CPU — большой объём делим на части
+    shards = 3 if pending > 1500 else 1
+    print(f">>> Сверка: распознаю {pending} записей, потоков: {shards}\n")
+    procs = []
+    for k in range(shards):
+        cmd = ["docker", "run", "--rm", "--gpus", "all",
+               "-v", f"{config.DATASET}:/data:ro",
+               "-v", f"{config.RUN}:/work",
+               "-v", f"{config.SCRIPTS}:/scripts:ro",
+               "-v", f"{os.path.join(config.RUN, 'whisper_cache')}:/root/.cache/whisper",
+               AUDIT_IMAGE, "python", "/scripts/03_audit_transcribe.py", "--shard", f"{k}/{shards}"]
+        procs.append(subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                      encoding="utf-8", errors="replace"))
+
+    def pump(k, p):
+        for line in p.stdout:
+            # прогресс-бар загрузки модели и баннер образа в лог не нужны
+            if line.startswith(("[", "Уже распознано")) or "Error" in line or "error" in line:
+                print(f"[поток {k}] {line}", end="")
+
+    threads = [threading.Thread(target=pump, args=(k, p)) for k, p in enumerate(procs)]
+    for t in threads: t.start()
+    for t in threads: t.join()
+    if any(p.wait() != 0 for p in procs):
+        print("\n!!! Распознавание завершилось с ошибкой (запущен ли Docker и собран ли образ CosyVoice?)")
+        sys.exit(1)
+    print()
+
+
+def cmd_audit(args):
+    """Шаги 3-4: сверка звука оригинала с текстом. Останавливает пайплайн при неразобранных расхождениях."""
+    if getattr(args, "no_audit", False):
+        print("Сверка пропущена (--no-audit).\n")
+        return
+    _run_transcribe()
+    run_script("04_audit_report.py")
 
 
 def cmd_generate(args):
@@ -134,31 +195,31 @@ def cmd_generate(args):
         a += ["--chapter", str(args.chapter)]
     if args.limit:
         a += ["--limit", str(args.limit)]
-    run_script("3_generate.py", a)
+    run_script("05_generate.py", a)
 
 
 def cmd_build(_args):
-    run_script("4_build_repack_list.py")
+    run_script("06_build_repack_list.py")
 
 
 def cmd_findpck(_args):
-    run_script("5_find_pck.py")
+    run_script("07_find_pck.py")
 
 
 def cmd_wwise(args):
-    run_script("6_prepare_wwise.py", ["--gender", args.gender])
+    run_script("08_prepare_wwise.py", ["--gender", args.gender])
 
 
 def cmd_collect(args):
-    run_script("7_collect_wem.py", ["--gender", args.gender])
+    run_script("09_collect_wem.py", ["--gender", args.gender])
 
 
 def cmd_repack(args):
-    run_script("8_repack_pck.py", ["--gender", args.gender])
+    run_script("10_repack_pck.py", ["--gender", args.gender])
 
 
 def cmd_install(args):
-    ps = os.path.join(config.SCRIPTS, "9_install.ps1")
+    ps = os.path.join(config.SCRIPTS, "11_install.ps1")
     cmd = ["powershell", "-ExecutionPolicy", "Bypass", "-File", ps]
     if args.uninstall:
         cmd.append("-Uninstall")
@@ -185,9 +246,10 @@ def cmd_utils(args):
 
 
 def cmd_full(args):
-    """Шаги 1-5: map + scan + generate + build + findpck"""
+    """Шаги 1-7: map + scan + audit + generate + build + findpck"""
     cmd_map(args)
     cmd_scan(args)
+    cmd_audit(args)
     cmd_generate(args)
     cmd_build(args)
     cmd_findpck(args)
@@ -244,6 +306,7 @@ def cmd_chapter(args):
         cmd_map(args)
         args.all = False  # для scan/generate
         cmd_scan(args)
+        cmd_audit(args)
         cmd_generate(args)
         cmd_build(args)
         cmd_findpck(args)
@@ -266,6 +329,7 @@ def cmd_chapter(args):
         args.all = True  # для scan/generate
         args.all_categories = False
         cmd_scan(args)
+        cmd_audit(args)
         cmd_generate(args)
         cmd_build(args)
         cmd_findpck(args)
@@ -290,6 +354,7 @@ def cmd_all(args):
     args.all = False
     args.all_categories = True
     cmd_scan(args)
+    cmd_audit(args)
     cmd_generate(args)
     cmd_build(args)
     cmd_findpck(args)
@@ -319,6 +384,7 @@ def cmd_extra(args):
         args.all = False
         args.all_categories = True
     cmd_scan(args)
+    cmd_audit(args)
     cmd_generate(args)
     cmd_build(args)
     cmd_findpck(args)
@@ -356,6 +422,7 @@ def main():
     p.add_argument("--limit", type=int, default=None)
     p.add_argument("--no-wwise", action="store_true", help="не запускать WwiseConsole автоматически")
     p.add_argument("--update", action="store_true", help="обновить сабмодули перед генерацией")
+    p.add_argument("--no-audit", action="store_true", help="пропустить сверку звука с текстом")
     p.set_defaults(fn=cmd_chapter)
 
     # Побочный контент: одна категория или все
@@ -366,6 +433,7 @@ def main():
     p.add_argument("--limit", type=int, default=None)
     p.add_argument("--no-wwise", action="store_true", help="не запускать WwiseConsole автоматически")
     p.add_argument("--update", action="store_true", help="обновить сабмодули перед генерацией")
+    p.add_argument("--no-audit", action="store_true", help="пропустить сверку звука с текстом")
     p.set_defaults(fn=cmd_extra)
 
     # Весь контент (главы + побочка)
@@ -374,6 +442,7 @@ def main():
     p.add_argument("--limit", type=int, default=None)
     p.add_argument("--no-wwise", action="store_true", help="не запускать WwiseConsole автоматически")
     p.add_argument("--update", action="store_true", help="обновить сабмодули перед генерацией")
+    p.add_argument("--no-audit", action="store_true", help="пропустить сверку звука с текстом")
     p.set_defaults(fn=cmd_all)
 
     # === Отдельные шаги (для отладки) ===
@@ -382,28 +451,30 @@ def main():
     p = sub.add_parser("scan", help="шаг 2: фильтр по главам и категориям")
     add_chapter_args(p); p.set_defaults(fn=cmd_scan)
 
-    p = sub.add_parser("generate", help="шаг 3: генерация TTS")
+    sub.add_parser("audit", help="шаги 3-4: сверка звука оригинала с текстом").set_defaults(fn=cmd_audit)
+
+    p = sub.add_parser("generate", help="шаг 5: генерация TTS")
     add_chapter_args(p)
     p.add_argument("--limit", type=int, default=None, help="лимит задач (для теста)")
     p.set_defaults(fn=cmd_generate)
 
-    sub.add_parser("build", help="шаг 4: repack_list").set_defaults(fn=cmd_build)
-    sub.add_parser("findpck", help="шаг 5: id_to_pck").set_defaults(fn=cmd_findpck)
+    sub.add_parser("build", help="шаг 6: repack_list").set_defaults(fn=cmd_build)
+    sub.add_parser("findpck", help="шаг 7: id_to_pck").set_defaults(fn=cmd_findpck)
 
-    p = sub.add_parser("wwise", help="шаг 6: staging + wsources")
+    p = sub.add_parser("wwise", help="шаг 8: staging + wsources")
     p.add_argument("--gender", choices=["m", "f"], required=True)
     p.set_defaults(fn=cmd_wwise)
 
-    p = sub.add_parser("collect", help="шаг 7: сбор wem")
+    p = sub.add_parser("collect", help="шаг 9: сбор wem")
     p.add_argument("--gender", choices=["m", "f"], required=True)
     p.set_defaults(fn=cmd_collect)
 
-    p = sub.add_parser("repack", help="шаг 8: сборка pck")
+    p = sub.add_parser("repack", help="шаг 10: сборка pck")
     p.add_argument("--gender", choices=["m", "f"], required=True)
     p.set_defaults(fn=cmd_repack)
 
     # === Установка ===
-    p = sub.add_parser("install", help="шаг 9: установка в игру")
+    p = sub.add_parser("install", help="шаг 11: установка в игру")
     p.add_argument("--gender", choices=["m", "f"], default="m")
     p.add_argument("--uninstall", action="store_true")
     p.set_defaults(fn=cmd_install)

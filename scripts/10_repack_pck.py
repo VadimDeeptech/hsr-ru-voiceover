@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-8_repack_pck.py — сборка мода под GENDER -> pck_out_<GENDER>\.
+10_repack_pck.py — сборка мода под GENDER -> pck_out_<GENDER>\.
 База = pck_backup_en, если есть (гарантия чистого исходника), иначе папка игры.
 Патч: wem дописывается в конец pck (выравнивание 16), в записи обновляются size/offset.
 
-Запуск: python 8_repack_pck.py --gender m|f
+Запуск: python 10_repack_pck.py --gender m|f
 """
 import os, csv, struct, shutil, argparse, sys
 

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""1_mapper.py — маппинг wav -> VoiceID -> текст. Результат: mapping.csv
+"""01_mapper.py — маппинг wav -> VoiceID -> текст. Результат: mapping.csv
 v3: гендерные суффиксы _m/_f (IsPlayerInvolved: true в VoiceConfig).
     VoiceConfig хранит БАЗОВЫЙ VoicePath (chapter0_2_mar7th_141),
     а файлы на диске сплитятся на *_m.wav / *_f.wav.
@@ -11,8 +11,11 @@ from collections import Counter
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
+from utils import decisions
 
-EO   = os.path.join(config.GAMEDATA, "ExcelOutput")
+DECISIONS = decisions.load()
+
+EO   =os.path.join(config.GAMEDATA, "ExcelOutput")
 TM   = os.path.join(config.GAMEDATA, "TextMap")
 DS   = config.DATASET
 OUT  = config.RUN
@@ -29,9 +32,33 @@ for e in load(os.path.join(EO, "VoiceConfig.json")):
 
 print("Загружаю TalkSentenceConfig...")
 sent_hash = {}
+voice_sents = {}   # VoiceID -> [TalkSentenceID, ...] по полю VoiceID самой строки
 for e in load(os.path.join(EO, "TalkSentenceConfig.json")):
     h = e.get("TalkSentenceText", {}).get("Hash")
-    if h: sent_hash[e["TalkSentenceID"]] = str(h)
+    if not h: continue
+    sent_hash[e["TalkSentenceID"]] = str(h)
+    if e.get("VoiceID"):
+        voice_sents.setdefault(e["VoiceID"], []).append(e["TalkSentenceID"])
+
+def sentence_id(voiceid):
+    """Строка субтитра для звука. Какой звук играет под строкой, задаёт её поле VoiceID —
+    с номером строки оно обычно совпадает, но не всегда. Если на звук не ссылается
+    ни одна строка, берём строку с тем же номером (старые данные без поля)."""
+    sids = voice_sents.get(voiceid)
+    if not sids:
+        return voiceid if voiceid in sent_hash else None
+    if voiceid in sids:
+        return voiceid
+    stats["text_by_voice_field"] += 1
+    return next((s for s in sids if textmap.get(sent_hash[s])), sids[0])
+
+def following(sid, n):
+    """Хэши следующих n строк субтитров с текстом — продолжение той же записи."""
+    res, i = [], sid + 1
+    while len(res) < n and i in sent_hash:
+        if textmap.get(sent_hash[i]): res.append(sent_hash[i])
+        i += 1
+    return res
 
 print("Загружаю VoiceAtlas...")
 atlas = {}
@@ -124,7 +151,8 @@ for dp, dn, fn in os.walk(DS):
             m = char_re.match(stem)
             if m: char = m.group(1)
 
-        h, avatar = sent_hash.get(voiceid), ""
+        sid, avatar = sentence_id(voiceid), ""
+        h = sent_hash[sid] if sid is not None else None
         if not h and voiceid in atlas:
             avatar, h = atlas[voiceid]
         if not h and voiceid in atlas_by_audioid:
@@ -135,6 +163,18 @@ for dp, dn, fn in os.walk(DS):
             h = tsmv_map[voiceid]
         text_ru = textmap.get(h) if h else None
         text_en = textmap_en.get(h) if h else None
+
+        dec = decisions.find(DECISIONS, stem)
+        if dec and dec[0] in ("join", "next") and sid is not None:
+            # ручное решение: текст записи продолжается в следующих строках субтитров
+            more = following(sid, dec[1])
+            if len(more) < dec[1]:
+                print(f"  !! {stem}: в решении {dec[1]} строк продолжения, найдено {len(more)}")
+            own = [] if dec[0] == "next" else [h]
+            text_ru = " ".join(textmap.get(x) or "" for x in own + more)
+            text_en = " ".join(textmap_en.get(x) or "" for x in own + more)
+            stats["joined"] += 1
+
         if text_ru: stats["with_ru_text"] += 1
         else: stats["no_text"] += 1
 
@@ -149,4 +189,6 @@ with open(csv_path, "w", encoding="utf-8-sig", newline="") as f:
 
 print(f"\nГотово: {csv_path}")
 print(f"Всего wav: {stats['wav_total']} | unmapped: {stats['unmapped_skip']} | нет в VoiceConfig: {stats['no_voiceconfig']}")
+print(f"Текст взят по полю VoiceID другой строки: {stats['text_by_voice_field']} | "
+      f"склеено по audit_decisions.csv: {stats['joined']}")
 print(f"Совпало: {stats['matched']} (из них по _m/_f-суффиксу: {stats['matched_gender_suffix']}) | с RU-текстом: {stats['with_ru_text']} | без текста: {stats['no_text']}")

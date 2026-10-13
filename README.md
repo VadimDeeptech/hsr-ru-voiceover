@@ -139,17 +139,36 @@ python pipeline.py install --gender m
 python pipeline.py map                                # 1. wav -> mapping.csv
 python pipeline.py scan --all-categories              # 2. фильтр по всем категориям
 python pipeline.py scan --category side0              #    ...или по одной
-python pipeline.py generate --all-categories          # 3. TTS для всех категорий
+python pipeline.py audit                              # 3-4. сверка звука оригинала с текстом
+python pipeline.py generate --all-categories          # 5. TTS для всех категорий
 python pipeline.py generate --category vo --limit 50  #    ...тест на 50 репликах vo
-python pipeline.py build                              # 4. repack_list.csv
-python pipeline.py findpck                            # 5. id_to_pck.csv
-python pipeline.py wwise --gender m                   # 6. staging + wsources
-python pipeline.py collect --gender m                 # 7. сбор wem
-python pipeline.py repack --gender m                  # 8. сборка pck
+python pipeline.py build                              # 6. repack_list.csv
+python pipeline.py findpck                            # 7. id_to_pck.csv
+python pipeline.py wwise --gender m                   # 8. staging + wsources
+python pipeline.py collect --gender m                 # 9. сбор wem
+python pipeline.py repack --gender m                  # 10. сборка pck
 ```
 
 > WwiseConsole запускается автоматически. Чтобы пропустить (например, Wwise GUI открыт): `--no-wwise`.
 > `generate` резюмируемый: существующие wav пропускаются, так что прерванный прогон можно продолжить той же командой.
+
+### Сверка звука с текстом (audit)
+
+Перед генерацией полные циклы (`all`, `chapter`, `extra`) распознают английскую речь в оригинальных wav (Whisper в контейнерах на образе CosyVoice) и сравнивают её с субтитром из данных игры. Так находятся реплики, где текст не тот, разбит на несколько строк или в записи вообще нет речи.
+
+- Результаты распознавания кэшируются в `hsr-run-voice\asr\`: первый прогон по всему датасету идёт часы, после обновления игры распознаются только новые записи.
+- Отчёт пишется в `hsr-run-voice\audit_report.csv`, неразобранные расхождения идут первыми.
+- Если есть неразобранные расхождения, пайплайн останавливается до генерации. Решения вписываются в `audit_decisions.csv` в корне проекта, после чего та же команда запускается снова:
+
+| action | Что делает |
+|---|---|
+| `accept` | расхождение известно, озвучивать текст как есть |
+| `join` + `lines` | текст продолжается: своя строка + следующие N строк субтитров |
+| `next` + `lines` | своя строка — ремарка: взять только следующие N строк |
+| `keep` | не озвучивать, оставить в игре оригинал |
+
+> Пропустить сверку: `--no-audit`. Только отчёт без остановки: `python scripts\04_audit_report.py --no-gate`.
+> Во время сверки видеопамять занята распознаванием — CosyVoice-генерацию параллельно не запускать.
 
 ### Утилиты
 
@@ -174,7 +193,7 @@ git submodule update --remote
 # 4. Диагностика: появились ли новые таблицы с текстом?
 python pipeline.py utils find-missing-text
 
-# 5. Если скрипт нашёл новые таблицы — добавь их в 1_mapper.py (строки load_extra)
+# 5. Если скрипт нашёл новые таблицы — добавь их в 01_mapper.py (строки load_extra)
 
 # 6. Полный цикл и установка
 python pipeline.py all --gender m

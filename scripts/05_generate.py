@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-3_generate.py — генерация RU-озвучки через CosyVoice (cross_lingual, :8020).
+05_generate.py — генерация RU-озвучки через CosyVoice (cross_lingual, :8020).
 - разметка: {RUBY_B#аннотация}текст{RUBY_E#} -> только текст; {F#}/{M#} -> по полу;
   {NICKNAME}/{TEXTJOIN#54} -> имя; <color>/<unbreak>/<size>/<i> -> выкидываем
 - гендерные строки (теги в тексте) -> пара файлов <name>__m.wav и <name>__f.wav
@@ -10,22 +10,30 @@
 - резюмируемый
 
 Запуск:
-    python 3_generate.py --chapter 0        # только chapter0
-    python 3_generate.py --all              # все найденные главы
-    python 3_generate.py --category side0   # только side0
-    python 3_generate.py --all-categories   # все категории
-    python 3_generate.py --all --limit 20   # тестовый прогон
+    python 05_generate.py --chapter 0        # только chapter0
+    python 05_generate.py --all              # все найденные главы
+    python 05_generate.py --category side0   # только side0
+    python 05_generate.py --all-categories   # все категории
+    python 05_generate.py --all --limit 20   # тестовый прогон
 """
-import os, csv, re, time, struct, subprocess, argparse
+import os, io, csv, re, time, wave, struct, subprocess, argparse
 import requests
 
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
+from utils import decisions
+
+DECISIONS = decisions.load()
 
 NICK  = {"m": "Первопроходец", "f": "Первопроходчица"}
 GENDER_RE = re.compile(r"\{[FM]#|\{NICKNAME|\{TEXTJOIN#54", re.I)
 NAME_RE   = re.compile(r"(?:chapter|side|companion)\w*?_(.+?)_([a-z][a-z0-9]*)_(\d+)(?:_[a-z])?$", re.I)
+WORD_RE   = re.compile(r"[^\W_]")   # хоть одна буква или цифра; "...", "?!", "♪", "███" — не слова
+REMARK_RE = re.compile(r"\*[^*]+\*")  # весь текст — ремарка: *бормотание титана*, *Зевок*
+
+MAX_REF_SEC   = 29.0   # CosyVoice не принимает образец голоса длиннее 30 с
+SCENE_MIN_CPS = 3.0    # символов текста на секунду оригинала; ниже — сцена с однострочным субтитром
 
 def clean_text(text, gender="m"):
     text = re.sub(r"\{RUBY_B#[^}]*\}([^{]*)\{RUBY_E#\}", r"\1", text)
@@ -40,6 +48,31 @@ def clean_text(text, gender="m"):
     text = re.sub(r"</?[^>]+>", "", text)           # <color>, <unbreak>, <size>, <i>...
     text = re.sub(r"\\n|\t", " ", text)
     return re.sub(r"\s+", " ", text).strip()
+
+def is_wordless(text):
+    """Текст, который нечем озвучить: нет букв/цифр или это целиком ремарка в *звёздочках*."""
+    return not WORD_RE.search(text) or bool(REMARK_RE.fullmatch(text))
+
+def ref_audio(src, orig):
+    """Образец голоса для CosyVoice: файл целиком или его первые MAX_REF_SEC секунд."""
+    if not orig or orig <= MAX_REF_SEC:
+        with open(src, "rb") as f:
+            return f.read()
+    try:
+        with wave.open(src, "rb") as w:
+            params = w.getparams()
+            frames = w.readframes(int(params.framerate * MAX_REF_SEC))
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as o:
+            o.setparams(params)
+            o.writeframes(frames)
+        return buf.getvalue()
+    except (wave.Error, EOFError):
+        # не-PCM wav: режем через ffmpeg
+        r = subprocess.run(["ffmpeg", "-v", "quiet", "-i", src, "-t", str(MAX_REF_SEC), "-f", "wav", "-"],
+                           capture_output=True, timeout=60)
+        r.check_returncode()
+        return r.stdout
 
 def wav_duration(path):
     try:
@@ -103,9 +136,13 @@ def generate_chapter(csv_name, out_name, limit=None):
         k = name_key(os.path.splitext(os.path.basename(r["file"]))[0])
         if k: by_key.setdefault(k, r["text_ru"])
 
-    tasks, gendered, fallback_warned = [], 0, False
+    tasks, gendered, wordless, kept, fallback_warned = [], 0, 0, 0, False
     for r in rows:
         base = os.path.splitext(os.path.basename(r["file"]))[0]
+        if (decisions.find(DECISIONS, base) or ("",))[0] == "keep":
+            # ручное решение из audit_decisions.csv: в игре остаётся оригинал
+            kept += 1
+            continue
         text = r["text_ru"].strip()
         if not text:
             k = name_key(base)
@@ -115,6 +152,11 @@ def generate_chapter(csv_name, out_name, limit=None):
             else:
                 print(f"  !! нет текста и двойника: {base} — пропуск")
                 continue
+
+        if is_wordless(clean_text(text)):
+            # вздох, пауза, ремарка, зацензуренная речь — озвучивать нечего, в игре остаётся оригинал
+            wordless += 1
+            continue
 
         g, from_suffix = row_gender(r, base)
         if from_suffix and "gender" not in r and not fallback_warned:
@@ -134,11 +176,13 @@ def generate_chapter(csv_name, out_name, limit=None):
 
     if limit:
         tasks = tasks[:limit]
-    print(f"{out_name}: задач {len(tasks)} (текстово-гендерных строк: {gendered})")
+    print(f"{out_name}: задач {len(tasks)} (текстово-гендерных строк: {gendered}), "
+          f"без слов — оставлен оригинал: {wordless}"
+          + (f", оригинал по решению: {kept}" if kept else ""))
 
     rep_path = os.path.join(out_dir, "gen_report.csv")
     new_rep = not os.path.exists(rep_path)
-    done = fail = skip = 0
+    done = fail = skip = scenes = 0
     with open(rep_path, "a", encoding="utf-8-sig", newline="") as rep:
         wr = csv.writer(rep, delimiter=";")
         if new_rep:
@@ -149,14 +193,17 @@ def generate_chapter(csv_name, out_name, limit=None):
                 skip += 1; continue
             src = os.path.join(config.DATASET, r["file"])
             orig = wav_duration(src)
+            if orig and orig > MAX_REF_SEC and len(text) / orig < SCENE_MIN_CPS:
+                # длинная сцена, к которой в данных игры привязана одна строка субтитра:
+                # озвучка заменила бы минуту звука парой секунд — оставляем оригинал
+                scenes += 1; continue
             t0 = time.time()
             try:
-                with open(src, "rb") as af:
-                    resp = requests.post(config.COSYVOICE_URL + "/tts",
-                                         data={"text": text, "mode": "cross_lingual",
-                                               "response_format": "wav"},
-                                         files={"voice": (os.path.basename(src), af.read(), "audio/wav")},
-                                         timeout=300)
+                resp = requests.post(config.COSYVOICE_URL + "/tts",
+                                     data={"text": text, "mode": "cross_lingual",
+                                           "response_format": "wav"},
+                                     files={"voice": (os.path.basename(src), ref_audio(src, orig), "audio/wav")},
+                                     timeout=300)
                 took = time.time() - t0
                 if resp.status_code == 200:
                     with open(dst, "wb") as f: f.write(resp.content)
@@ -175,7 +222,8 @@ def generate_chapter(csv_name, out_name, limit=None):
             if i % 10 == 0 or i == len(tasks):
                 print(f"[{i}/{len(tasks)}] ok={done} skip={skip} fail={fail}")
             time.sleep(0.3)
-    print(f"{out_name}: {done} сгенерировано, {skip} пропущено, {fail} ошибок")
+    print(f"{out_name}: {done} сгенерировано, {skip} пропущено, {fail} ошибок"
+          + (f", длинных сцен — оставлен оригинал: {scenes}" if scenes else ""))
     return done, skip, fail
 
 def main():

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""5_find_pck.py — сканирует таблицы externals всех pck игры -> id_to_pck.csv"""
+"""07_find_pck.py — сканирует таблицы externals всех pck игры -> id_to_pck.csv"""
 import os, csv, struct, sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

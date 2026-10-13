@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""7_collect_wem.py — сбор wem после конвертации -> repack\<GENDER>\
+"""09_collect_wem.py — сбор wem после конвертации -> repack\<GENDER>\
 
-Запуск: python 7_collect_wem.py --gender m|f
+Запуск: python 09_collect_wem.py --gender m|f
 """
 import os, glob, shutil, argparse, sys
 
