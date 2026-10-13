@@ -98,6 +98,16 @@ else:
 WWISE_CONSOLE = _wwise_console or _find_wwise_console()
 COSYVOICE_URL = _cosyvoice_url
 
+# csv в hsr-run-voice, которые не являются категориями (chapterN.csv, side0.csv, vo.csv, ...)
+NON_CATEGORY_CSV = ("mapping.csv", "audit_report.csv", "audit_auto.csv")
+
+def category_csvs():
+    """Имена csv категорий в hsr-run-voice (результат 02_scan.py)."""
+    skip = {n.lower() for n in NON_CATEGORY_CSV}
+    return sorted(f for f in os.listdir(RUN)
+                  if f.lower().endswith(".csv") and f.lower() not in skip
+                  and os.path.isfile(os.path.join(RUN, f)))
+
 def ensure_dirs():
     """Создаёт рабочие папки, если их нет."""
     for d in (RUN, REPACK, PCK_BACKUP, LOGS):

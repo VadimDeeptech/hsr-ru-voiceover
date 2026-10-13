@@ -8,16 +8,17 @@ import os, csv, re, sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
+from utils import decisions
 
 AW = config.AWWISE
 sys.path.insert(0, AW)
 from mapper import Mapper
 
+DECISIONS = decisions.load()
+
 # авто-скан *.csv -> папка с wav в output_ru
 SOURCES = []
-for f in sorted(os.listdir(config.RUN)):
-    if not f.endswith(".csv") or f == "mapping.csv":
-        continue
+for f in config.category_csvs():
     # chapterN.csv -> chapterN, side0.csv -> side0, companion1.csv -> companion1, ...
     m = re.match(r"(chapter\d+|side\d+|Side\d+|companion\d+|vo|ambient|archive|CG|bgm|chapter\w+)\.csv$", f)
     if m:
@@ -53,7 +54,7 @@ for p, lst in cands.items():
     en = [h for h, l in lst if l == en_idx]
     path2id[p] = en[0] if en else lst[0][0]
 
-rows, miss = [], 0
+rows, miss, kept = [], 0, 0
 for csv_name, src in SOURCES:
     csv_path = os.path.join(config.RUN, csv_name)
     if not os.path.exists(csv_path):
@@ -65,6 +66,10 @@ for csv_name, src in SOURCES:
         key = fp.split("\\", 1)[1].lower().replace(".wav", ".wem")
         wid = path2id.get(key)
         name = os.path.splitext(os.path.basename(fp))[0]
+        if (decisions.find(DECISIONS, name) or ("",))[0] == "keep":
+            # в игре остаётся оригинал — даже если wav уже был сгенерирован раньше
+            kept += 1
+            continue
         if wid:
             rows.append({"pck": fp.split("\\")[0], "wem_id": wid, "name": name, "src": src})
         else:
@@ -75,5 +80,5 @@ for csv_name, src in SOURCES:
 with open(OUT, "w", encoding="utf-8-sig", newline="") as f:
     wtr = csv.DictWriter(f, ["pck", "wem_id", "name", "src"], delimiter=";")
     wtr.writeheader(); wtr.writerows(rows)
-print(f"Всего сопоставлено: {len(rows)}, без ID: {miss}")
+print(f"Всего сопоставлено: {len(rows)}, без ID: {miss}, оставлен оригинал по решению: {kept}")
 print("->", OUT)

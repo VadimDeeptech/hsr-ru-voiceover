@@ -25,6 +25,13 @@ WEM_OUT   = os.path.join(config.RUN, f"wem_out_{GENDER}")
 WCONSOLE  = config.WWISE_CONSOLE
 CONV_NAME = "Vorbis_RU"
 
+def same_file(a, b):
+    """b — та же жёсткая ссылка, что a, либо её копия (copy2 сохраняет размер и время)."""
+    if os.path.samefile(a, b):
+        return True
+    sa, sb = os.stat(a), os.stat(b)
+    return sa.st_size == sb.st_size and int(sa.st_mtime) == int(sb.st_mtime)
+
 os.makedirs(STAGE, exist_ok=True)
 rows = list(csv.DictReader(open(os.path.join(REPACK, "repack_list.csv"), encoding="utf-8-sig"), delimiter=";"))
 
@@ -48,8 +55,15 @@ for r in rows:
         print(f"  !! нет wav: {name} (src={r['src']})")
         continue
     dst = os.path.join(STAGE, r["wem_id"] + ".wav")
+    if os.path.exists(dst) and not same_file(wav, dst):
+        # wav перегенерирован или выбран другой вариант (появился __m/__f)
+        os.remove(dst)
     if not os.path.exists(dst):
-        shutil.copy2(wav, dst)
+        # жёсткая ссылка вместо копии: staging не дублирует output_ru на диске
+        try:
+            os.link(wav, dst)
+        except OSError:
+            shutil.copy2(wav, dst)
     sources.append(r["wem_id"] + ".wav")
 
 xml_path = os.path.join(config.RUN, f"externals_{GENDER}.wsources")

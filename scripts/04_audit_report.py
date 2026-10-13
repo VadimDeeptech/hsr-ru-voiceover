@@ -11,7 +11,9 @@
 
 Расхождение считается разобранным, если:
     - для записи есть решение в audit_decisions.csv (см. utilsdecisions.py), или
-    - оно попадает под правило автоприёма (AUTO_ACCEPT ниже).
+    - оно попадает под правило автоприёма (AUTO_ACCEPT ниже), или
+    - текст записи взят из ненадёжного источника (decisions.UNSURE_SOURCES): такие записи
+      без подтверждения распознаванием не озвучиваются — список пишется в audit_auto.csv.
 Остальные — «НЕ РАЗОБРАНО»: код возврата 2, генерация не начинается.
 
 Запуск: python 04_audit_report.py            (после 03_audit_transcribe.py; можно во время прогона)
@@ -49,16 +51,19 @@ if not asr:
     print("Нет результатов распознавания. Сначала запусти: python pipeline.py audit")
     sys.exit(1)
 
-DEC = decisions.load()
+DEC = decisions.load(auto=False)
 rows, stats, by_cat = [], Counter(), Counter()
+auto_keep = []   # (voicepath, причина) -> audit_auto.csv
 with open(os.path.join(config.RUN, "mapping.csv"), encoding="utf-8-sig", newline="") as f:
     for r in csv.DictReader(f, delimiter=";"):
+        # ненадёжный источник текста: без подтверждения распознаванием не озвучиваем
+        unsure = (r.get("text_source") in decisions.UNSURE_SOURCES and r["text_ru"].strip()
+                  and not decisions.find(DEC, r["voicepath"]))
         a = asr.get(r["file"])
-        if not a:
-            stats["ещё не распознано"] += 1
-            continue
-        if a["note"]:
-            stats["ошибка распознавания"] += 1
+        if not a or a["note"]:
+            stats["ещё не распознано" if not a else "ошибка распознавания"] += 1
+            if unsure:
+                auto_keep.append((r["voicepath"], f"{r['text_source']}: не распознано"))
             continue
         text, heard = words(r["text_en"]), words(a["heard"])
         if not text or not r["text_ru"].strip():
@@ -80,6 +85,9 @@ with open(os.path.join(config.RUN, "mapping.csv"), encoding="utf-8-sig", newline
         dec = decisions.find(DEC, r["voicepath"])
         if dec:
             status = f"решение: {dec[0]}"
+        elif unsure:
+            status = "оригинал: источник текста"
+            auto_keep.append((r["voicepath"], f"{r['text_source']}: {kind}, похожесть {sim:.2f}"))
         elif any(r["voicepath"].startswith(p) and kind == k and sim >= s for p, k, s in AUTO_ACCEPT):
             status = "принято правилом"
         else:
@@ -101,8 +109,16 @@ with open(out, "w", encoding="utf-8-sig", newline="") as f:
                  "heard", "text_en", "text_ru", "file"])
     wr.writerows(rows)
 
+with open(decisions.AUTO_PATH, "w", encoding="utf-8-sig", newline="") as f:
+    wr = csv.writer(f, delimiter=";")
+    wr.writerow(["voicepath", "action", "lines", "comment"])
+    wr.writerows([vp, "keep", "", why] for vp, why in auto_keep)
+
 for k, n in sorted(stats.items(), key=lambda x: -x[1]):
     print(f"{k}: {n}")
+if auto_keep:
+    print(f"Текст из ненадёжного источника не подтверждён — остаётся оригинал: {len(auto_keep)} "
+          f"({decisions.AUTO_PATH}; чтобы озвучить, впиши accept в {decisions.PATH})")
 unresolved = sum(1 for r in rows if r[0] == "НЕ РАЗОБРАНО")
 print("->", out)
 if unresolved:

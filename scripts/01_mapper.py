@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
 from utils import decisions
 
-DECISIONS = decisions.load()
+DECISIONS = decisions.load(auto=False)
 
 EO   =os.path.join(config.GAMEDATA, "ExcelOutput")
 TM   = os.path.join(config.GAMEDATA, "TextMap")
@@ -41,16 +41,16 @@ for e in load(os.path.join(EO, "TalkSentenceConfig.json")):
         voice_sents.setdefault(e["VoiceID"], []).append(e["TalkSentenceID"])
 
 def sentence_id(voiceid):
-    """Строка субтитра для звука. Какой звук играет под строкой, задаёт её поле VoiceID —
-    с номером строки оно обычно совпадает, но не всегда. Если на звук не ссылается
-    ни одна строка, берём строку с тем же номером (старые данные без поля)."""
+    """Строка субтитра для звука и источник текста (колонка text_source). Какой звук играет
+    под строкой, задаёт её поле VoiceID — с номером строки оно обычно совпадает, но не всегда.
+    Если на звук не ссылается ни одна строка, берём строку с тем же номером (старые данные без поля)."""
     sids = voice_sents.get(voiceid)
     if not sids:
-        return voiceid if voiceid in sent_hash else None
+        return (voiceid, "sentence_samenum") if voiceid in sent_hash else (None, "")
     if voiceid in sids:
-        return voiceid
+        return voiceid, "sentence"
     stats["text_by_voice_field"] += 1
-    return next((s for s in sids if textmap.get(sent_hash[s])), sids[0])
+    return next((s for s in sids if textmap.get(sent_hash[s])), sids[0]), "sentence_other"
 
 def following(sid, n):
     """Хэши следующих n строк субтитров с текстом — продолжение той же записи."""
@@ -151,16 +151,16 @@ for dp, dn, fn in os.walk(DS):
             m = char_re.match(stem)
             if m: char = m.group(1)
 
-        sid, avatar = sentence_id(voiceid), ""
+        (sid, source), avatar = sentence_id(voiceid), ""
         h = sent_hash[sid] if sid is not None else None
         if not h and voiceid in atlas:
-            avatar, h = atlas[voiceid]
+            (avatar, h), source = atlas[voiceid], "atlas"
         if not h and voiceid in atlas_by_audioid:
-            avatar, h = atlas_by_audioid[voiceid]
+            (avatar, h), source = atlas_by_audioid[voiceid], "atlas_audio"
         if not h and voiceid in extra_hash:
-            h = extra_hash[voiceid]
+            h, source = extra_hash[voiceid], "extra"
         if not h and voiceid in tsmv_map:
-            h = tsmv_map[voiceid]
+            h, source = tsmv_map[voiceid], "multivoice"
         text_ru = textmap.get(h) if h else None
         text_en = textmap_en.get(h) if h else None
 
@@ -175,16 +175,18 @@ for dp, dn, fn in os.walk(DS):
             text_en = " ".join(textmap_en.get(x) or "" for x in own + more)
             stats["joined"] += 1
 
-        if text_ru: stats["with_ru_text"] += 1
+        if text_ru:
+            stats["with_ru_text"] += 1
+            stats["unsure_source"] += source in decisions.UNSURE_SOURCES
         else: stats["no_text"] += 1
 
         rows.append([rel, stem, voiceid, vtype, char, avatar, gender,
-                     (text_ru or "").replace("\r", " "), (text_en or "").replace("\r", " ")])
+                     (text_ru or "").replace("\r", " "), (text_en or "").replace("\r", " "), source])
 
 csv_path = os.path.join(OUT, "mapping.csv")
 with open(csv_path, "w", encoding="utf-8-sig", newline="") as f:
     wr = csv.writer(f, delimiter=";")
-    wr.writerow(["file", "voicepath", "voiceid", "voicetype", "character", "avatarid", "gender", "text_ru", "text_en"])
+    wr.writerow(["file", "voicepath", "voiceid", "voicetype", "character", "avatarid", "gender", "text_ru", "text_en", "text_source"])
     wr.writerows(rows)
 
 print(f"\nГотово: {csv_path}")
@@ -192,3 +194,5 @@ print(f"Всего wav: {stats['wav_total']} | unmapped: {stats['unmapped_skip']
 print(f"Текст взят по полю VoiceID другой строки: {stats['text_by_voice_field']} | "
       f"склеено по audit_decisions.csv: {stats['joined']}")
 print(f"Совпало: {stats['matched']} (из них по _m/_f-суффиксу: {stats['matched_gender_suffix']}) | с RU-текстом: {stats['with_ru_text']} | без текста: {stats['no_text']}")
+print(f"Текст из ненадёжного источника ({', '.join(decisions.UNSURE_SOURCES)}): {stats['unsure_source']} — "
+      f"озвучиваются только после подтверждения сверкой")

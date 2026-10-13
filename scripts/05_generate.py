@@ -7,7 +7,8 @@
 - гендерные ФАЙЛЫ (<name>_m/_f.wav, колонка gender в CSV) -> ОДИН вариант,
   текст чистится под свой пол, референс — свой же (m-файл из m-референса)
 - строки без текста (дубли Ag1) -> текст из двойника (персонаж+номер)
-- резюмируемый
+- резюмируемый: существующий wav пропускается, пока его текст не изменился
+  (тексты озвученного — в gen_text.csv рядом с wav)
 
 Запуск:
     python 05_generate.py --chapter 0        # только chapter0
@@ -16,7 +17,7 @@
     python 05_generate.py --all-categories   # все категории
     python 05_generate.py --all --limit 20   # тестовый прогон
 """
-import os, io, csv, re, time, wave, struct, subprocess, argparse
+import os, io, csv, re, time, wave, struct, hashlib, subprocess, argparse
 import requests
 
 import sys
@@ -34,9 +35,9 @@ REMARK_RE = re.compile(r"\*[^*]+\*")  # весь текст — ремарка: 
 
 MAX_REF_SEC   = 29.0   # CosyVoice не принимает образец голоса длиннее 30 с
 SCENE_MIN_CPS = 3.0    # символов текста на секунду оригинала; ниже — сцена с однострочным субтитром
+MAX_FAIL_STREAK = 20   # столько ошибок подряд — сервер лежит, дальше идти бессмысленно
 
 def clean_text(text, gender="m"):
-    text = re.sub(r"\{RUBY_B#[^}]*\}([^{]*)\{RUBY_E#\}", r"\1", text)
     text = re.sub(r"\{F#([^}]*)\}\{M#([^}]*)\}",
                   lambda m: m.group(1) if gender == "f" else m.group(2), text)
     text = re.sub(r"\{F#([^}]*)\}", lambda m: m.group(1) if gender == "f" else "", text)
@@ -45,6 +46,8 @@ def clean_text(text, gender="m"):
     text = re.sub(r"\{TEXTJOIN#54\}", NICK[gender], text, flags=re.I)
     text = re.sub(r"\{TEXTJOIN#(\d+)\}",
                   lambda m: print(f"  !! неизвестный TEXTJOIN#{m.group(1)}") or "", text)
+    # после подстановок: внутри RUBY бывает {NICKNAME}
+    text = re.sub(r"\{RUBY_B#[^}]*\}([^{]*)\{RUBY_E#\}", r"\1", text)
     text = re.sub(r"</?[^>]+>", "", text)           # <color>, <unbreak>, <size>, <i>...
     text = re.sub(r"\\n|\t", " ", text)
     return re.sub(r"\s+", " ", text).strip()
@@ -52,6 +55,9 @@ def clean_text(text, gender="m"):
 def is_wordless(text):
     """Текст, который нечем озвучить: нет букв/цифр или это целиком ремарка в *звёздочках*."""
     return not WORD_RE.search(text) or bool(REMARK_RE.fullmatch(text))
+
+def text_hash(text):
+    return hashlib.sha1(text.encode("utf-8")).hexdigest()[:16]
 
 def ref_audio(src, orig):
     """Образец голоса для CosyVoice: файл целиком или его первые MAX_REF_SEC секунд."""
@@ -139,7 +145,8 @@ def generate_chapter(csv_name, out_name, limit=None):
     tasks, gendered, wordless, kept, fallback_warned = [], 0, 0, 0, False
     for r in rows:
         base = os.path.splitext(os.path.basename(r["file"]))[0]
-        if (decisions.find(DECISIONS, base) or ("",))[0] == "keep":
+        action = (decisions.find(DECISIONS, base) or ("",))[0]
+        if action == "keep":
             # ручное решение из audit_decisions.csv: в игре остаётся оригинал
             kept += 1
             continue
@@ -164,15 +171,17 @@ def generate_chapter(csv_name, out_name, limit=None):
             print("     Лучше пересобрать: pipeline.py map -> pipeline.py scan")
             fallback_warned = True
 
+        # текст изменён решением join/next: wav, озвученный до записи текстов, устарел
+        redo = action in ("join", "next")
         if g in ("m", "f"):
             # гендер зашит в сам файл: один вариант из своего референса
-            tasks.append((r, base, clean_text(text, g)))
+            tasks.append((r, base, clean_text(text, g), redo))
         elif GENDER_RE.search(text):
             gendered += 1
-            tasks.append((r, base + "__m", clean_text(text, "m")))
-            tasks.append((r, base + "__f", clean_text(text, "f")))
+            tasks.append((r, base + "__m", clean_text(text, "m"), redo))
+            tasks.append((r, base + "__f", clean_text(text, "f"), redo))
         else:
-            tasks.append((r, base, clean_text(text, "m")))
+            tasks.append((r, base, clean_text(text, "m"), redo))
 
     if limit:
         tasks = tasks[:limit]
@@ -182,15 +191,32 @@ def generate_chapter(csv_name, out_name, limit=None):
 
     rep_path = os.path.join(out_dir, "gen_report.csv")
     new_rep = not os.path.exists(rep_path)
-    done = fail = skip = scenes = 0
-    with open(rep_path, "a", encoding="utf-8-sig", newline="") as rep:
+    # каким текстом озвучен каждый wav: при изменении текста (решение join/next, правка
+    # перевода в патче) файл генерируется заново
+    txt_path = os.path.join(out_dir, "gen_text.csv")
+    texts = {}
+    if os.path.exists(txt_path):
+        with open(txt_path, encoding="utf-8-sig", newline="") as f:
+            texts = {row[0]: row[1] for row in csv.reader(f, delimiter=";") if len(row) == 2}
+    done = fail = skip = scenes = redone = streak = 0
+    with open(rep_path, "a", encoding="utf-8-sig", newline="") as rep, \
+         open(txt_path, "a", encoding="utf-8", newline="") as txt:
         wr = csv.writer(rep, delimiter=";")
+        tw = csv.writer(txt, delimiter=";")
         if new_rep:
             wr.writerow(["file", "status", "orig_sec", "gen_sec", "ratio", "sec_taken", "note"])
-        for i, (r, out_name_wav, text) in enumerate(tasks, 1):
+        for i, (r, out_name_wav, text, redo) in enumerate(tasks, 1):
             dst = os.path.join(out_dir, out_name_wav + ".wav")
+            h = text_hash(text)
+            stale = False
             if os.path.exists(dst):
-                skip += 1; continue
+                known = texts.get(out_name_wav)
+                if known == h or (known is None and not redo):
+                    if known is None:
+                        # wav озвучен до появления gen_text.csv: считаем, что текущим текстом
+                        tw.writerow([out_name_wav, h])
+                    skip += 1; continue
+                stale = True
             src = os.path.join(config.DATASET, r["file"])
             orig = wav_duration(src)
             if orig and orig > MAX_REF_SEC and len(text) / orig < SCENE_MIN_CPS:
@@ -206,23 +232,31 @@ def generate_chapter(csv_name, out_name, limit=None):
                                      timeout=300)
                 took = time.time() - t0
                 if resp.status_code == 200:
-                    with open(dst, "wb") as f: f.write(resp.content)
-                    done += 1
+                    # через временный файл: оборванная запись не оставит битый wav
+                    with open(dst + ".tmp", "wb") as f: f.write(resp.content)
+                    os.replace(dst + ".tmp", dst)
+                    tw.writerow([out_name_wav, h]); txt.flush()
+                    done += 1; streak = 0
+                    redone += stale
                     g = wav_duration(dst)
                     wr.writerow([r["file"], "OK", f"{orig:.2f}" if orig else "?",
                                  f"{g:.2f}" if g else "?",
                                  f"{g/orig:.2f}" if g and orig else "", f"{took:.1f}", out_name_wav])
                 else:
-                    fail += 1
+                    fail += 1; streak += 1
                     wr.writerow([r["file"], f"HTTP {resp.status_code}", "", "", "", f"{took:.1f}", resp.text[:150]])
             except Exception as e:
-                fail += 1
+                fail += 1; streak += 1
                 wr.writerow([r["file"], "EXC", "", "", "", "", str(e)[:150]])
             rep.flush()
             if i % 10 == 0 or i == len(tasks):
                 print(f"[{i}/{len(tasks)}] ok={done} skip={skip} fail={fail}")
-            time.sleep(0.3)
+            if streak >= MAX_FAIL_STREAK:
+                print(f"!! {streak} ошибок подряд — CosyVoice не отвечает ({config.COSYVOICE_URL})? "
+                      f"Останавливаюсь, подробности в {rep_path}")
+                sys.exit(1)
     print(f"{out_name}: {done} сгенерировано, {skip} пропущено, {fail} ошибок"
+          + (f", перегенерировано из-за нового текста: {redone}" if redone else "")
           + (f", длинных сцен — оставлен оригинал: {scenes}" if scenes else ""))
     return done, skip, fail
 
@@ -269,9 +303,7 @@ def main():
 
     # --- Режим --all-categories ---
     if args.all_categories:
-        # Находим все *.csv в RUN, которые не mapping.csv
-        all_csvs = [f for f in os.listdir(config.RUN)
-                    if f.endswith(".csv") and f != "mapping.csv"]
+        all_csvs = config.category_csvs()
         # Сначала главы
         chapters = sorted([c for c in all_csvs if re.match(r"chapter\d+\.csv$", c)],
                           key=lambda x: int(re.search(r"\d+", x).group()))
