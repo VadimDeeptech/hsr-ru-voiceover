@@ -43,10 +43,11 @@ for e in load(os.path.join(EO, "TalkSentenceConfig.json")):
 def sentence_id(voiceid):
     """Строка субтитра для звука и источник текста (колонка text_source). Какой звук играет
     под строкой, задаёт её поле VoiceID — с номером строки оно обычно совпадает, но не всегда.
-    Если на звук не ссылается ни одна строка, берём строку с тем же номером (старые данные без поля)."""
+    Если на звук не ссылается ни одна строка — (None, ""): сначала ищем явные ссылки в других
+    таблицах, строка с тем же номером — последний вариант (см. ниже)."""
     sids = voice_sents.get(voiceid)
     if not sids:
-        return (voiceid, "sentence_samenum") if voiceid in sent_hash else (None, "")
+        return None, ""
     if voiceid in sids:
         return voiceid, "sentence"
     stats["text_by_voice_field"] += 1
@@ -100,7 +101,7 @@ def load_extra(fname, vid_key, hash_key):
 print("Загружаю дополнительные таблицы...")
 load_extra("TarotBookSentence.json", "VoiceID", "Sentence")
 load_extra("TarotFiles.json", "VoiceID", "Sentence")
-load_extra("B51RacingTR.json", "VoiceID", "TRName")
+load_extra("B51RacingTR.json", "VoiceID", "TRContent")
 load_extra("HeartDialTalk.json", "VoiceID", "SDFText")
 print(f"  Доп.таблиц: {len(extra_hash)} записей")
 
@@ -161,6 +162,11 @@ for dp, dn, fn in os.walk(DS):
             h, source = extra_hash[voiceid], "extra"
         if not h and voiceid in tsmv_map:
             h, source = tsmv_map[voiceid], "multivoice"
+        if not h and voiceid in sent_hash:
+            # явных ссылок нет: строка с тем же номером (старые данные без поля VoiceID).
+            # Только после других таблиц: номер может случайно совпасть с чужой строкой (гонки B51)
+            sid, source = voiceid, "sentence_samenum"
+            h = sent_hash[sid]
         text_ru = textmap.get(h) if h else None
         text_en = textmap_en.get(h) if h else None
 

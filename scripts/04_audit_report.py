@@ -11,11 +11,15 @@
     текст не тот   — слова в записи не похожи на субтитр
 
 Расхождение считается разобранным, если:
-    - для записи есть решение в audit_decisions.csv (см. utilsdecisions.py), или
-    - оно попадает под правило автоприёма (AUTO_ACCEPT ниже), или
+    - для записи есть решение в audit_decisions.csv (см. utils\\decisions.py), или
     - текст записи взят из ненадёжного источника (decisions.UNSURE_SOURCES): такие записи
-      без подтверждения распознаванием не озвучиваются — список пишется в audit_auto.csv.
-Остальные — «НЕ РАЗОБРАНО»: код возврата 2, генерация не начинается.
+      без подтверждения распознаванием не озвучиваются, или
+    - оно попадает под правило:
+        нет речи, текст не тот с похожестью < KEEP_BELOW — оставить оригинал (существа, говорящие
+            звуками; пересказ в английской записи; приветствия NPC; короткие возгласы)
+        текст не тот с похожестью от KEEP_BELOW — озвучить (обычно ошибка распознавания имён)
+Автоматические keep пишутся в audit_auto.csv. «Звука больше» разбирается вручную:
+остальные — «НЕ РАЗОБРАНО», код возврата 2, генерация не начинается.
 
 Запуск: python 04_audit_report.py            (после 03_audit_transcribe.py; можно во время прогона)
 """
@@ -26,14 +30,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
 from utils import decisions
 
-MIN_SIM = 0.5    # похожесть слов записи и субтитра; ниже — «текст не тот»
-
-# Автоприём: фоновые разговоры, где английская озвучка перефразирует субтитр.
-# (префикс voicepath, вид расхождения, минимальная похожесть)
-# ПРЕДВАРИТЕЛЬНО — пороги уточняются по полному прогону.
-AUTO_ACCEPT = [
-    ("vo_ambient", "текст не тот", 0.30),
-]
+MIN_SIM    = 0.5   # похожесть слов записи и субтитра; ниже — «текст не тот»
+KEEP_BELOW = 0.3   # «текст не тот» ниже этого — звук не тот, что в субтитре: оставляем оригинал;
+                   # от 0.3 до MIN_SIM — по полному прогону почти всегда тот же текст с ошибками распознавания
 
 ap = argparse.ArgumentParser(description="Отчёт о расхождениях звука и текста")
 ap.add_argument("--no-gate", action="store_true", help="только отчёт, код возврата всегда 0")
@@ -89,7 +88,10 @@ with open(os.path.join(config.RUN, "mapping.csv"), encoding="utf-8-sig", newline
         elif unsure:
             status = "оригинал: источник текста"
             auto_keep.append((r["voicepath"], f"{r['text_source']}: {kind}, похожесть {sim:.2f}"))
-        elif any(r["voicepath"].startswith(p) and kind == k and sim >= s for p, k, s in AUTO_ACCEPT):
+        elif kind == "нет речи" or (kind == "текст не тот" and sim < KEEP_BELOW):
+            status = "оригинал по правилу"
+            auto_keep.append((r["voicepath"], f"{kind}, похожесть {sim:.2f}"))
+        elif kind == "текст не тот":
             status = "принято правилом"
         else:
             status = "НЕ РАЗОБРАНО"
@@ -119,8 +121,8 @@ with open(decisions.AUTO_PATH, "w", encoding="utf-8-sig", newline="") as f:
 for k, n in sorted(stats.items(), key=lambda x: -x[1]):
     print(f"{k}: {n}")
 if auto_keep:
-    print(f"Текст из ненадёжного источника не подтверждён — остаётся оригинал: {len(auto_keep)} "
-          f"({decisions.AUTO_PATH}; чтобы озвучить, впиши accept в {decisions.PATH})")
+    print(f"\nОстаётся оригинал автоматически: {len(auto_keep)} ({decisions.AUTO_PATH}). "
+          f"Чтобы всё же озвучить запись, впиши для неё accept в {decisions.PATH}")
 unresolved = sum(1 for r in rows if r[0] == "НЕ РАЗОБРАНО")
 print("->", out)
 if unresolved:

@@ -7,3 +7,28 @@ vo_ambient_w2_broadcast_xiyan_102;keep;;радиосцена 69 с, в данн�
 vo_ambient_w2_broadcast_xiyan_103;keep;;радиосцена 54 с, в данных игры одна строка с многоточием
 vo_ambient_w2_broadcast_xiyan_104;keep;;радиосцена 84 с, в данных игры одна строка с многоточием
 vo_ambient_w2_broadcast_xiyan_105;keep;;радиосцена 85 с, в данных игры одна строка с многоточием
+side2_yq1_yanqing_192;join;2;продолжение в 2 следующих строках (совпадение 1.00)
+vo_ambient_w2_talk_adultfd_114;join;1;вторая половина фразы в следующей строке
+vo_ambient_w3_talk_oldma_102;join;1;вторая половина фразы в следующей строке
+chapter3_38_boothill_116;keep;;смех
+chapter4_45_khaslana_139;keep;;смех
+chapter3_32_monkey_105;keep;;песня про бананы
+chapter3_35_student3_102;keep;;песня про бананы
+chapter3_35_bajiao_109;keep;;песня про бананы
+chapter3_35_yinxiang_101;keep;;песня про бананы
+chapter3_3_rachc_102;accept;;в записи повторы
+chapter3_35_danheng_156_f;accept;;в записи повторы
+chapter5_42_xuexue_102;accept;;в записи заикание
+chapter4_24_yiyuanmen_106;accept;;в записи больше выкриков
+vo_ambient_w3_talk_childfb_101;accept;;в записи на фразу больше
+companionx_silverwolf_110;accept;;в записи на фразу больше
+archive_dahlia_1;accept;;текст тот же, длинная реплика
+vo_ambient_w2_talk_childma_102;accept;;в записи на фразу больше
+vo_ambient_w2_talk_adultfd_120;accept;;в записи на фразу больше
+chapter5_16_cangyi_106;accept;;в записи больше смеха
+side0_rm_player_144_m;accept;;в записи повторы
+vo_ambient_w2_broadcast_mingxi_116;accept;;в записи на фразу больше
+chapter5_27_guanzhonga_103;accept;;в записи повторы
+chaptersummer01_2_dianzhu_101;accept;;в записи на фразу больше
+vo_ambient_w2_talk_adultma_122;accept;;в записи на фразу больше
+side1_ytzx_giovanni_104_m;accept;;текст тот же
