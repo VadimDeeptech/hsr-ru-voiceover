@@ -8,13 +8,15 @@
 - ~0.7 с на файл (small.en); упирается в один поток CPU, поэтому полный прогон
   делится на части (--shard) и идёт несколькими контейнерами параллельно
 
-Запуск в 3 потока (PowerShell, из корня проекта):
+Обычно запускается из pipeline.py audit (число потоков — audit_runners в config.toml).
+Вручную в 3 потока (PowerShell, из корня проекта):
     0..2 | % { docker run -d --name "hsr-audit-$_" --gpus all `
-      -v "${PWD}\\hsr-dataset:/data:ro" -v "${PWD}\\hsr-run-voice:/work" `
-      -v "${PWD}\\scripts:/scripts:ro" -v "${PWD}\\hsr-run-voice\\whisper_cache:/root/.cache/whisper" `
+      -v "${PWD}\\hsr-dataset:/data:ro" -v "${PWD}\\hsr-run-voice:/work:ro" `
+      -v "${PWD}\\hsr-generate\\audit\\asr:/asr" -v "${PWD}\\scripts:/scripts:ro" `
+      -v "${PWD}\\hsr-generate\\whisper_cache:/root/.cache/whisper" `
       hsr-cosyvoice-cosyvoice python /scripts/03_audit_transcribe.py --shard "$_/3" }
     docker logs -f hsr-audit-0
-Результат: hsr-run-voice\\asr\\asr_*.csv
+Результат: hsr-generate\\audit\\asr\\asr_*.csv
 """
 import os, csv, glob, time, argparse
 import whisper
@@ -22,7 +24,7 @@ import whisper
 ap = argparse.ArgumentParser(description="Распознавание оригинальной озвучки для сверки с текстом")
 ap.add_argument("--mapping", default="/work/mapping.csv")
 ap.add_argument("--dataset", default="/data")
-ap.add_argument("--out-dir", default="/work/asr")
+ap.add_argument("--out-dir", default="/asr")
 ap.add_argument("--shard", default="0/1", help="K/N — эта часть из N (каждая пишет свой asr_K.csv)")
 ap.add_argument("--model", default="small.en")
 ap.add_argument("--limit", type=int, default=None, help="лимит файлов (для теста)")

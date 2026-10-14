@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-04_audit_report.py — сверка «что звучит в оригинале» (asr\\asr_*.csv) с английским субтитром
-(mapping.csv). Ничего не исправляет: пишет audit_report.csv и останавливает пайплайн,
+04_audit_report.py — сверка «что звучит в оригинале» (hsr-generate\\audit\\asr\\asr_*.csv)
+с английским субтитром (mapping.csv). Ничего не исправляет: пишет hsr-generate\\audit\\audit_report.csv
+и останавливает пайплайн,
 если есть неразобранные расхождения.
 
 Виды расхождений:
@@ -44,7 +45,7 @@ def words(s):
     return re.sub(r"[^a-z0-9' ]", " ", TAGS.sub(" ", s).lower()).split()
 
 asr = {}
-for p in glob.glob(os.path.join(config.RUN, "asr", "asr_*.csv")):
+for p in glob.glob(os.path.join(config.ASR, "asr_*.csv")):
     with open(p, encoding="utf-8-sig", newline="") as f:
         asr.update((r["file"], r) for r in csv.DictReader(f, delimiter=";"))
 if not asr:
@@ -102,7 +103,8 @@ with open(os.path.join(config.RUN, "mapping.csv"), encoding="utf-8-sig", newline
 
 # неразобранные — первыми
 rows.sort(key=lambda x: (x[0] != "НЕ РАЗОБРАНО", x[1], float(x[2])))
-out = os.path.join(config.RUN, "audit_report.csv")
+os.makedirs(config.AUDIT, exist_ok=True)
+out = os.path.join(config.AUDIT, "audit_report.csv")
 with open(out, "w", encoding="utf-8-sig", newline="") as f:
     wr = csv.writer(f, delimiter=";")
     wr.writerow(["status", "kind", "similarity", "words_heard", "words_text", "category", "voicepath",

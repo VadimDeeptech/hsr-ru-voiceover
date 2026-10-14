@@ -126,7 +126,7 @@ def row_gender(r, base):
 def generate_chapter(csv_name, out_name, limit=None):
     """Генерация одной категории. Возвращает (done, skip, fail)."""
     csv_path = os.path.join(config.RUN, csv_name)
-    out_dir  = os.path.join(config.RUN, "output_ru", out_name)
+    out_dir  = os.path.join(config.OUTPUT_RU, out_name)
     os.makedirs(out_dir, exist_ok=True)
 
     if not os.path.exists(csv_path):

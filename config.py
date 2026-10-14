@@ -23,11 +23,20 @@ LOGS      = os.path.join(ROOT, "logs")
 REPACK    = os.path.join(RUN, "repack")
 PCK_BACKUP = os.path.join(RUN, "pck_backup_en")
 
+# hsr-generate — дорогие результаты (часы GPU): распознавание и озвучка.
+# Должна быть на одном диске с hsr-run-voice: staging Wwise — жёсткие ссылки на output_ru.
+GEN           = os.path.join(ROOT, "hsr-generate")
+AUDIT         = os.path.join(GEN, "audit")          # audit_report.csv, audit_auto.csv
+ASR           = os.path.join(AUDIT, "asr")          # asr_*.csv — результаты Whisper
+OUTPUT_RU     = os.path.join(GEN, "output_ru")      # <категория>\*.wav, gen_report.csv, gen_text.csv
+WHISPER_CACHE = os.path.join(GEN, "whisper_cache")  # модель Whisper
+
 # Машинно-специфичные настройки (из config.toml)
 _config_toml = os.path.join(ROOT, "config.toml")
 _game_dir = None
 _wwise_console = None
 _cosyvoice_url = "http://localhost:8020"
+_audit_runners = 3
 
 if os.path.exists(_config_toml):
     try:
@@ -40,6 +49,10 @@ if os.path.exists(_config_toml):
     _game_dir      = _cfg.get("game_dir")
     _wwise_console = _cfg.get("wwise_console")
     _cosyvoice_url = _cfg.get("cosyvoice_url", _cosyvoice_url)
+    _audit_runners = _cfg.get("audit_runners", _audit_runners)
+
+if not isinstance(_audit_runners, int) or isinstance(_audit_runners, bool) or _audit_runners < 1:
+    sys.exit(f"config.toml: audit_runners должен быть целым числом от 1, сейчас: {_audit_runners!r}")
 
 def _find_game_dir():
     """Автопоиск папки с игрой по типичным путям."""
@@ -97,20 +110,17 @@ else:
 
 WWISE_CONSOLE = _wwise_console or _find_wwise_console()
 COSYVOICE_URL = _cosyvoice_url
-
-# csv в hsr-run-voice, которые не являются категориями (chapterN.csv, side0.csv, vo.csv, ...)
-NON_CATEGORY_CSV = ("mapping.csv", "audit_report.csv", "audit_auto.csv")
+AUDIT_RUNNERS = _audit_runners
 
 def category_csvs():
-    """Имена csv категорий в hsr-run-voice (результат 02_scan.py)."""
-    skip = {n.lower() for n in NON_CATEGORY_CSV}
+    """Имена csv категорий в hsr-run-voice (результат 02_scan.py): все csv, кроме mapping.csv."""
     return sorted(f for f in os.listdir(RUN)
-                  if f.lower().endswith(".csv") and f.lower() not in skip
+                  if f.lower().endswith(".csv") and f.lower() != "mapping.csv"
                   and os.path.isfile(os.path.join(RUN, f)))
 
 def ensure_dirs():
     """Создаёт рабочие папки, если их нет."""
-    for d in (RUN, REPACK, PCK_BACKUP, LOGS):
+    for d in (RUN, REPACK, PCK_BACKUP, LOGS, GEN, ASR, OUTPUT_RU, WHISPER_CACHE):
         os.makedirs(d, exist_ok=True)
 
 def check_env():

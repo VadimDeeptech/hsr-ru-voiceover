@@ -12,7 +12,7 @@ decisions.py — чтение audit_decisions.csv: ручные решения �
         next   — своя строка — ремарка: берём только следующие `lines` строк
         keep   — не озвучиваем, в игре остаётся оригинал
 
-Кроме ручных решений есть автоматические (hsr-run-voice\\audit_auto.csv, пишет 04_audit_report.py):
+Кроме ручных решений есть автоматические (hsr-generate\\audit\\audit_auto.csv, пишет 04_audit_report.py):
 keep для записей, чей текст взят из ненадёжного источника (UNSURE_SOURCES) и не подтверждён
 распознаванием. Ручное решение всегда важнее автоматического.
 """
@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 import config
 
 PATH      = os.path.join(config.ROOT, "audit_decisions.csv")
-AUTO_PATH = os.path.join(config.RUN, "audit_auto.csv")
+AUTO_PATH = os.path.join(config.AUDIT, "audit_auto.csv")
 ACTIONS   = ("accept", "join", "next", "keep")
 
 # Источники текста (колонка text_source в mapping.csv, см. 01_mapper.py), где субтитр часто

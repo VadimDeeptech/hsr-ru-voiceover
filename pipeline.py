@@ -132,7 +132,7 @@ AUDIT_IMAGE = "hsr-cosyvoice-cosyvoice"   # образ CosyVoice: в нём уж
 def _audit_pending():
     """Сколько записей из mapping.csv ещё не распознано."""
     done = set()
-    for p in glob.glob(os.path.join(config.RUN, "asr", "asr_*.csv")):
+    for p in glob.glob(os.path.join(config.ASR, "asr_*.csv")):
         with open(p, encoding="utf-8-sig", newline="") as f:
             done |= {r["file"] for r in csv.DictReader(f, delimiter=";")}
     with open(os.path.join(config.RUN, "mapping.csv"), encoding="utf-8-sig", newline="") as f:
@@ -146,15 +146,17 @@ def _run_transcribe():
         print("Сверка: новых записей для распознавания нет.\n")
         return
     # распознавание упирается в один поток CPU — большой объём делим на части
-    shards = 3 if pending > 1500 else 1
+    # (audit_runners в config.toml); на малый объём не стоит грузить модель несколько раз
+    shards = config.AUDIT_RUNNERS if pending > 1500 else 1
     print(f">>> Сверка: распознаю {pending} записей, потоков: {shards}\n")
     procs = []
     for k in range(shards):
         cmd = ["docker", "run", "--rm", "--gpus", "all",
                "-v", f"{config.DATASET}:/data:ro",
-               "-v", f"{config.RUN}:/work",
+               "-v", f"{config.RUN}:/work:ro",
+               "-v", f"{config.ASR}:/asr",
                "-v", f"{config.SCRIPTS}:/scripts:ro",
-               "-v", f"{os.path.join(config.RUN, 'whisper_cache')}:/root/.cache/whisper",
+               "-v", f"{config.WHISPER_CACHE}:/root/.cache/whisper",
                AUDIT_IMAGE, "python", "/scripts/03_audit_transcribe.py", "--shard", f"{k}/{shards}"]
         procs.append(subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                       encoding="utf-8", errors="replace"))
