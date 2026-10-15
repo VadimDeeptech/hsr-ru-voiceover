@@ -9,6 +9,7 @@ pipeline.py — единая точка входа для всех шагов п
     python pipeline.py extra [категория]          — полный цикл для одной категории или всех, кроме глав chapterN
     python pipeline.py install --gender m|f       — установка в игру (отдельно!)
     python pipeline.py install --uninstall        — откат
+    python pipeline.py package [--zip]            — пакет для игрока (наши wem + установщик) -> dist\
 
     # Отладка/разработка (отдельные шаги):
     python pipeline.py unmapped                   — узнать файлы из unmapped по речи
@@ -241,6 +242,8 @@ def cmd_findpck(_args):
 
 def cmd_wwise(args):
     run_script("10_prepare_wwise.py", ["--gender", args.gender])
+    if not args.no_wwise and not _run_wwise_console(args.gender):
+        sys.exit(1)
 
 
 def cmd_collect(args):
@@ -261,6 +264,15 @@ def cmd_install(args):
     print(f">>> {' '.join(cmd)}\n")
     # PowerShell пишет в pipe в OEM-кодировке консоли
     sys.exit(run_cmd(cmd, encoding="oem"))
+
+
+def cmd_package(args):
+    a = ["--genders", args.genders]
+    if args.version:
+        a += ["--version", args.version]
+    if args.zip:
+        a.append("--zip")
+    run_script("14_package.py", a)
 
 
 def cmd_utils(args):
@@ -485,8 +497,9 @@ def main():
     sub.add_parser("build", help="шаг 8: repack_list").set_defaults(fn=cmd_build)
     sub.add_parser("findpck", help="шаг 9: id_to_pck").set_defaults(fn=cmd_findpck)
 
-    p = sub.add_parser("wwise", help="шаг 10: staging + wsources")
+    p = sub.add_parser("wwise", help="шаг 10: staging + wsources + конвертация WwiseConsole")
     p.add_argument("--gender", choices=["m", "f"], required=True)
+    p.add_argument("--no-wwise", action="store_true", help="только staging + wsources, без WwiseConsole")
     p.set_defaults(fn=cmd_wwise)
 
     p = sub.add_parser("collect", help="шаг 11: сбор wem")
@@ -502,6 +515,13 @@ def main():
     p.add_argument("--gender", choices=["m", "f"], default="m")
     p.add_argument("--uninstall", action="store_true")
     p.set_defaults(fn=cmd_install)
+
+    # === Пакет для игрока ===
+    p = sub.add_parser("package", help="шаг 14: пакет для игрока (наши wem + установщик) -> dist\\")
+    p.add_argument("--genders", default="m,f", help="какие полы класть в пакет (по умолчанию m,f)")
+    p.add_argument("--version", help="версия пакета (по умолчанию — из installer\\HSR-RU-Voiceover.csproj)")
+    p.add_argument("--zip", action="store_true", help="упаковать в zip")
+    p.set_defaults(fn=cmd_package)
 
     # === Утилиты ===
     p = sub.add_parser("utils", help="диагностика и утилиты")

@@ -152,7 +152,7 @@ python pipeline.py generate --extra-categories        #    ...для всех, �
 python pipeline.py generate --category vo --limit 50  #    ...тест на 50 репликах vo
 python pipeline.py build                              # 8. repack_list.csv
 python pipeline.py findpck                            # 9. id_to_pck.csv
-python pipeline.py wwise --gender m                   # 10. staging + wsources
+python pipeline.py wwise --gender m                   # 10. staging + wsources + конвертация WwiseConsole
 python pipeline.py collect --gender m                 # 11. сбор wem
 python pipeline.py repack --gender m                  # 12. сборка pck
 ```
@@ -252,6 +252,37 @@ python pipeline.py install --gender m
 python pipeline.py install --uninstall
 ```
 
+## Пакет для игроков
+
+`install` копирует в игру полные pck из `pck_out_<пол>` — в них вся английская озвучка игры, поэтому для публикации они не годятся. Для игроков собирается пакет только с нашими wem и установщиком, который патчит pck в игре самого игрока.
+
+```bash
+python pipeline.py wwise --gender m && python pipeline.py collect --gender m
+python pipeline.py wwise --gender f && python pipeline.py collect --gender f
+python pipeline.py package --zip
+```
+
+Результат — `dist\HSR-RU-Voiceover-<версия>\` (и `.zip`): `HSR-RU-Voiceover.exe`, `README.txt` (инструкция для игрока), `LICENSE.txt` и `data\`:
+
+| Файл | Что внутри |
+|---|---|
+| `common.bin` | wem, побайтно одинаковые в сборках m и f |
+| `m.bin`, `f.bin` | wem, которые различаются по полу (реплики с тегами пола в тексте) |
+| `index.csv` | `pck;wem_id;variant;offset;size` в порядке `repack_list.csv` |
+| `package.txt` | формат, версия, полы, размер и sha256 каждого `.bin` |
+
+- Версия пакета — `<Version>` в `installer\HSR-RU-Voiceover.csproj` (или `--version`).
+- Для сборки установщика нужен .NET SDK (`winget install Microsoft.DotNet.SDK.10`). Установщик написан под .NET Framework 4.8: он есть в Windows 10/11, игроку ничего ставить не нужно.
+
+Установщик (`installer\`) делает тот же патч, что `12_repack_pck.py`: дописывает wem в конец pck (выравнивание 16) и правит size/offset в записях — результат побайтно совпадает с `pck_out_<пол>`. Для отката хранит в `%LOCALAPPDATA%\HSR-RU-Voiceover\` только исходную длину pck и исходные 24-байтные записи. Повторная установка ничего не дописывает; pck, который заменила игра (обновление, проверка файлов), распознаётся по хэшу индекса pck и ставится заново; прерванная установка откатывается при следующем запуске. Есть окно для игрока и командная строка (`HSR-RU-Voiceover.exe --help`).
+
+Тесты установщика — на подставной папке игры (настоящая игра только читается):
+
+```bash
+dotnet build installer -c Release
+python installer\tests\test_installer.py --work <пустая папка вне проекта>
+```
+
 ## Структура
 
 | Папка | Назначение |
@@ -264,6 +295,8 @@ python pipeline.py install --uninstall
 | `hsr-generate/` | Дорогие результаты (gitignored): `audit/` — распознавание и отчёты сверки, `output_ru/` — озвучка, `whisper_cache/` — модель Whisper. Должна быть на одном диске с `hsr-run-voice/` |
 | `hsr-wwise/` | Проект Wwise |
 | `scripts/` | Отдельные шаги пайплайна |
+| `installer/` | Установщик для игроков (C#, .NET Framework 4.8) и его тесты |
+| `dist/` | Собранные пакеты для игроков (gitignored) |
 | `scripts/utils/` | Общие модули (`texts.py` и `extra_tables.csv` — таблицы с текстом по VoiceID, `decisions.py` — решения сверки) и диагностика |
 | `config.py` | Авто-определение путей |
 | `config.toml` | Локальные настройки (gitignored) |
@@ -274,6 +307,7 @@ python pipeline.py install --uninstall
 - Python 3.12+
 - Docker Desktop
 - Wwise 2025.1+ (Audiokinetic)
+- .NET SDK 8+ — только для сборки пакета для игроков (`package`)
 - Honkai: Star Rail
 
 ## Используется

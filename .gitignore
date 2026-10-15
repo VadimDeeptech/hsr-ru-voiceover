@@ -8,6 +8,9 @@ logs
 hsr-dataset
 hsr-run-voice
 hsr-generate
+dist
+installer/bin
+installer/obj
 hsr-wwise/.backup*
 hsr-wwise/.cache*
 hsr-wwise/*.akd

@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Установщик для игрока: патчит pck игры нашими wem из пакета (pipeline.py package).
+       .NET Framework 4.8 есть в каждой Windows 10/11 — игроку ничего ставить не нужно. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>HSR-RU-Voiceover</AssemblyName>
+    <RootNamespace>HsrRuVoiceover</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Version>1.0.0</Version>
+    <Product>HSR RU Voiceover</Product>
+    <Title>HSR RU Voiceover — установка русской озвучки</Title>
+    <Description>Установщик русской озвучки Honkai: Star Rail (неофициальный фанатский мод)</Description>
+    <Company>Vadim Deeptech</Company>
+    <Authors>Vadim Deeptech</Authors>
+    <Copyright>Copyright (c) 2026 Vadim Deeptech, MIT License</Copyright>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- tests — скрипты на Python, в сборку не входят -->
+    <Compile Remove="tests\**" />
+    <None Remove="tests\**" />
+  </ItemGroup>
+
+</Project>
