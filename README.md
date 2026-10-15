@@ -1,12 +1,18 @@
 # HSR RU Voiceover
 
+[![Скачать на Playground](https://img.shields.io/badge/%D1%81%D0%BA%D0%B0%D1%87%D0%B0%D1%82%D1%8C-Playground-2ea44f)](https://www.playground.ru/honkai_star_rail/file/honkai_star_rail_russkaya_ozvuchka_dialogov_nejroset_hsr_ru_voiceover-1882053)
+[![Release](https://img.shields.io/github/v/release/VadimDeeptech/hsr-ru-voiceover?label=%D0%B2%D0%B5%D1%80%D1%81%D0%B8%D1%8F)](https://github.com/VadimDeeptech/hsr-ru-voiceover/releases)
+![Honkai: Star Rail 4.6](https://img.shields.io/badge/Honkai%3A%20Star%20Rail-4.6-blue)
+![Windows](https://img.shields.io/badge/%D0%BF%D0%BB%D0%B0%D1%82%D1%84%D0%BE%D1%80%D0%BC%D0%B0-Windows-0078d4)
+[![License: MIT](https://img.shields.io/github/license/VadimDeeptech/hsr-ru-voiceover?label=%D0%BB%D0%B8%D1%86%D0%B5%D0%BD%D0%B7%D0%B8%D1%8F)](LICENSE)
+
 Русская озвучка диалогов Honkai: Star Rail. Генерация — CosyVoice 3, образцы голосов — английские wav из игры (извлекаются с помощью [AnimeWwise](https://github.com/Escartem/AnimeWwise)), тексты — русский TextMap из дампа геймдаты ([Dimbreath/turnbasedgamedata](https://gitlab.com/Dimbreath/turnbasedgamedata)).
 
 > Катсцены (предрендеренные .usm) не озвучиваются. Только диалоги.
 
 > ⚠️ Неофициальный фанатский проект, не связан с HoYoverse. Озвучка сгенерирована нейросетью. Изменение файлов игры может нарушать её пользовательское соглашение — подробнее в разделе [Дисклеймер](#дисклеймер).
 
-Готовая озвучка для игроков и обсуждение — [Playground](https://users.playground.ru/8181259/). Ошибки и предложения по коду — GitHub Issues.
+Готовая озвучка для игроков и обсуждение — [Playground](https://www.playground.ru/honkai_star_rail/file/honkai_star_rail_russkaya_ozvuchka_dialogov_nejroset_hsr_ru_voiceover-1882053). Ошибки и предложения по коду — GitHub Issues.
 
 ## Содержание
 

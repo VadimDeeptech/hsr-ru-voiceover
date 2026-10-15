@@ -60,5 +60,15 @@ HSR RU Voiceover — русская озвучка Honkai: Star Rail
 Вернуть игру в исходное состояние всегда можно проверкой целостности файлов в лаунчере.
 
 
+Где скачивать
+-------------
+Официально мод распространяется только на Playground:
+https://www.playground.ru/honkai_star_rail/file/honkai_star_rail_russkaya_ozvuchka_dialogov_nejroset_hsr_ru_voiceover-1882053
+Ссылка на эту страницу и список версий есть также на GitHub: https://github.com/VadimDeeptech/hsr-ru-voiceover/releases
+Копии с других сайтов могут быть изменены или содержать вредоносный код — автор за них
+ответственности не несёт. Контрольная сумма SHA256 каждого архива указана на этих страницах;
+проверить свой архив можно в PowerShell: Get-FileHash HSR-RU-Voiceover-<версия>.zip
+
+
 Исходный код и сообщения об ошибках: https://github.com/VadimDeeptech/hsr-ru-voiceover
 Код установщика распространяется под лицензией MIT (LICENSE.txt).
