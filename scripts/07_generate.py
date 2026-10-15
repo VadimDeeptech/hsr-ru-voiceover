@@ -2,19 +2,21 @@
 """
 07_generate.py — генерация RU-озвучки через CosyVoice (cross_lingual, :8020).
 - разметка: {RUBY_B#аннотация}текст{RUBY_E#} -> только текст; {F#}/{M#} -> по полу;
-  {NICKNAME}/{TEXTJOIN#54} -> имя; <color>/<unbreak>/<size>/<i> -> выкидываем
+  {NICKNAME} -> имя по полу; {TEXTJOIN#N} -> название по умолчанию из TextJoinConfig;
+  <color>/<unbreak>/<size>/<i> -> выкидываем
 - гендерные строки (теги в тексте) -> пара файлов <name>__m.wav и <name>__f.wav
 - гендерные ФАЙЛЫ (<name>_m/_f.wav, колонка gender в CSV) -> ОДИН вариант,
   текст чистится под свой пол, референс — свой же (m-файл из m-референса)
-- строки без текста (дубли Ag1) -> текст из двойника (персонаж+номер)
-- резюмируемый: существующий wav пропускается, пока его текст не изменился
-  (тексты озвученного — в gen_text.csv рядом с wav)
+- строки без текста (дубли Ag1) -> текст из двойника (квест без ag + персонаж + номер)
+- резюмируемый: существующий wav пропускается, пока не изменились его текст и образец голоса
+  (тексты и образцы озвученного — в gen_text.csv рядом с wav)
 
 Запуск:
     python 07_generate.py --chapter 0        # только chapter0
     python 07_generate.py --all              # все найденные главы
     python 07_generate.py --category side0   # только side0
     python 07_generate.py --all-categories   # все категории
+    python 07_generate.py --extra-categories # все, кроме глав chapterN
     python 07_generate.py --all --limit 20   # тестовый прогон
 """
 import os, io, csv, re, time, wave, struct, hashlib, subprocess, argparse
@@ -23,12 +25,31 @@ import requests
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
-from utils import decisions
+from utils import decisions, texts
 
 DECISIONS = decisions.load()
 
 NICK  = {"m": "Первопроходец", "f": "Первопроходчица"}
-GENDER_RE = re.compile(r"\{[FM]#|\{NICKNAME|\{TEXTJOIN#54", re.I)
+GENDER_RE = re.compile(r"\{[FM]#|\{NICKNAME", re.I)
+# {TEXTJOIN#N} — название, которое выбирает игрок (TextJoinConfig): озвучиваем вариант
+# по умолчанию. Для клички Свинки-копилки (54) — короткий «Господин Свинка» (в английской
+# записи её зовут «the Trotter»), а не длинный «Господин Свинка-копилка».
+TEXTJOIN_ITEM = {54: 541}
+_textjoin = None
+
+def textjoin(n):
+    """Русский текст варианта TEXTJOIN#n (None — такого нет в данных игры)."""
+    global _textjoin
+    if _textjoin is None:
+        ru = texts.textmap_ru()
+        items = {e["TextJoinItemID"]: str((e.get("TextJoinText") or {}).get("Hash"))
+                 for e in texts.load(os.path.join(texts.EO, "TextJoinItem.json"))}
+        _textjoin = {}
+        for e in texts.load(os.path.join(texts.EO, "TextJoinConfig.json")):
+            item = TEXTJOIN_ITEM.get(e["TextJoinID"], e.get("DefaultItem"))
+            if ru.get(items.get(item)):
+                _textjoin[e["TextJoinID"]] = ru[items[item]]
+    return _textjoin.get(n)
 NAME_RE   = re.compile(r"(?:chapter|side|companion)\w*?_(.+?)_([a-z][a-z0-9]*)_(\d+)(?:_[a-z])?$", re.I)
 WORD_RE   = re.compile(r"[^\W_]")   # хоть одна буква или цифра; "...", "?!", "♪", "███" — не слова
 REMARK_RE = re.compile(r"\*[^*]+\*")  # весь текст — ремарка: *бормотание титана*, *Зевок*
@@ -43,9 +64,9 @@ def clean_text(text, gender="m"):
     text = re.sub(r"\{F#([^}]*)\}", lambda m: m.group(1) if gender == "f" else "", text)
     text = re.sub(r"\{M#([^}]*)\}", lambda m: "" if gender == "f" else m.group(1), text)
     text = re.sub(r"\{(NICKNAME|PLAYER_NAME|MC_NAME)\}", NICK[gender], text, flags=re.I)
-    text = re.sub(r"\{TEXTJOIN#54\}", NICK[gender], text, flags=re.I)
     text = re.sub(r"\{TEXTJOIN#(\d+)\}",
-                  lambda m: print(f"  !! неизвестный TEXTJOIN#{m.group(1)}") or "", text)
+                  lambda m: textjoin(int(m.group(1))) or print(f"  !! неизвестный TEXTJOIN#{m.group(1)}") or "",
+                  text, flags=re.I)
     # после подстановок: внутри RUBY бывает {NICKNAME}
     text = re.sub(r"\{RUBY_B#[^}]*\}([^{]*)\{RUBY_E#\}", r"\1", text)
     text = re.sub(r"</?[^>]+>", "", text)           # <color>, <unbreak>, <size>, <i>...
@@ -110,8 +131,10 @@ def ffprobe_duration(path):
         return None
 
 def name_key(basename):
+    """Ключ двойника: квест без префикса ag (chapter0_ag1_kafka_121 = chapter0_1_kafka_121),
+    персонаж, номер. Квест в ключе обязателен: номера реплик повторяются в разных квестах."""
     m = NAME_RE.match(basename.lower())
-    return (m.group(2), m.group(3)) if m else None
+    return (re.sub(r"^ag", "", m.group(1)), m.group(2), m.group(3)) if m else None
 
 def row_gender(r, base):
     """Пол из колонки gender; fallback — суффикс имени файла (для старого chapter0.csv)."""
@@ -158,6 +181,13 @@ def generate_chapter(csv_name, out_name, limit=None):
                 print(f"  дубль {base}: текст из двойника {k}")
             else:
                 print(f"  !! нет текста и двойника: {base} — пропуск")
+                # озвучка с чужим текстом от прежнего подбора двойника (без квеста в ключе):
+                # 08 берёт в сборку все строки, так что без удаления она попала бы в игру
+                for suffix in ("", "__m", "__f"):
+                    old = os.path.join(out_dir, base + suffix + ".wav")
+                    if os.path.exists(old):
+                        os.remove(old)
+                        print(f"     удалён {os.path.basename(old)}")
                 continue
 
         if is_wordless(clean_text(text)):
@@ -191,13 +221,15 @@ def generate_chapter(csv_name, out_name, limit=None):
 
     rep_path = os.path.join(out_dir, "gen_report.csv")
     new_rep = not os.path.exists(rep_path)
-    # каким текстом озвучен каждый wav: при изменении текста (решение join/next, правка
-    # перевода в патче) файл генерируется заново
+    # каким текстом и с какого образца голоса озвучен каждый wav: при изменении текста (решение
+    # join/next, правка перевода в патче) или образца (запись из unmapped досталась другому
+    # файлу) wav генерируется заново. Строки без src — от версий до записи образца.
     txt_path = os.path.join(out_dir, "gen_text.csv")
-    texts = {}
+    gen_texts = {}
     if os.path.exists(txt_path):
         with open(txt_path, encoding="utf-8-sig", newline="") as f:
-            texts = {row[0]: row[1] for row in csv.reader(f, delimiter=";") if len(row) == 2}
+            gen_texts = {row[0]: (row[1], row[2] if len(row) > 2 else None)
+                     for row in csv.reader(f, delimiter=";") if len(row) >= 2}
     done = fail = skip = scenes = redone = streak = 0
     with open(rep_path, "a", encoding="utf-8-sig", newline="") as rep, \
          open(txt_path, "a", encoding="utf-8", newline="") as txt:
@@ -208,17 +240,19 @@ def generate_chapter(csv_name, out_name, limit=None):
         for i, (r, out_name_wav, text, redo) in enumerate(tasks, 1):
             dst = os.path.join(out_dir, out_name_wav + ".wav")
             h = text_hash(text)
+            # src — настоящий файл записи из unmapped (file у неё виртуальный, см. 01_unmapped.py)
+            src_rel = r.get("src") or ""
             stale = False
             if os.path.exists(dst):
-                known = texts.get(out_name_wav)
-                if known == h or (known is None and not redo):
-                    if known is None:
-                        # wav озвучен до появления gen_text.csv: считаем, что текущим текстом
-                        tw.writerow([out_name_wav, h])
+                known_h, known_src = gen_texts.get(out_name_wav, (None, None))
+                if (known_h == h or (known_h is None and not redo)) and known_src in (None, src_rel):
+                    if known_h is None or (known_src is None and src_rel):
+                        # wav озвучен до появления gen_text.csv (или колонки src в нём):
+                        # считаем, что текущим текстом и с текущего образца
+                        tw.writerow([out_name_wav, h, src_rel])
                     skip += 1; continue
                 stale = True
-            # src — настоящий файл записи из unmapped (file у неё виртуальный, см. 01_unmapped.py)
-            src = os.path.join(config.DATASET, r.get("src") or r["file"])
+            src = os.path.join(config.DATASET, src_rel or r["file"])
             orig = wav_duration(src)
             if orig and orig > MAX_REF_SEC and len(text) / orig < SCENE_MIN_CPS:
                 # длинная сцена, к которой в данных игры привязана одна строка субтитра:
@@ -236,7 +270,7 @@ def generate_chapter(csv_name, out_name, limit=None):
                     # через временный файл: оборванная запись не оставит битый wav
                     with open(dst + ".tmp", "wb") as f: f.write(resp.content)
                     os.replace(dst + ".tmp", dst)
-                    tw.writerow([out_name_wav, h]); txt.flush()
+                    tw.writerow([out_name_wav, h, src_rel]); txt.flush()
                     done += 1; streak = 0
                     redone += stale
                     g = wav_duration(dst)
@@ -269,6 +303,7 @@ def main():
     g.add_argument("--category", type=str, help="конкретная категория (side0, companion1, vo, ...)")
     g.add_argument("--all-categories", action="store_true",
                    help="все категории (chapters + sides + companions + vo + ambient + archive + ...)")
+    g.add_argument("--extra-categories", action="store_true", help="все категории, кроме глав chapterN")
     ap.add_argument("--limit", type=int, default=None, help="лимит задач (для теста)")
     args = ap.parse_args()
 
@@ -302,12 +337,12 @@ def main():
         print(f"\n=== ИТОГО: {d} сгенерировано, {s} пропущено, {f} ошибок ===")
         return
 
-    # --- Режим --all-categories ---
-    if args.all_categories:
+    # --- Режим --all-categories / --extra-categories ---
+    if args.all_categories or args.extra_categories:
         all_csvs = config.category_csvs()
         # Сначала главы
-        chapters = sorted([c for c in all_csvs if re.match(r"chapter\d+\.csv$", c)],
-                          key=lambda x: int(re.search(r"\d+", x).group()))
+        chapters = [] if args.extra_categories else sorted(
+            [c for c in all_csvs if re.match(r"chapter\d+\.csv$", c)], key=lambda x: int(re.search(r"\d+", x).group()))
         # Потом остальные
         others = sorted([c for c in all_csvs if not re.match(r"chapter\d+\.csv$", c)])
 

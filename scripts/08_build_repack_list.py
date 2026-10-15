@@ -19,16 +19,8 @@ from mapper import Mapper
 DECISIONS = decisions.load()
 HEX_ID = re.compile(r"^[0-9a-f]{16}\.wav$", re.I)   # имя файла из unmapped = wem_id
 
-# авто-скан *.csv -> папка с wav в output_ru
-SOURCES = []
-for f in config.category_csvs():
-    # chapterN.csv -> chapterN, side0.csv -> side0, companion1.csv -> companion1, ...
-    m = re.match(r"(chapter\d+|side\d+|Side\d+|companion\d+|vo|ambient|archive|CG|bgm|chapter\w+)\.csv$", f)
-    if m:
-        SOURCES.append((f, m.group(1)))
-    else:
-        # fallback: любой другой .csv используем как есть
-        SOURCES.append((f, f[:-4]))
+# авто-скан *.csv -> папка с wav в output_ru: chapterN.csv -> chapterN, side0.csv -> side0, ...
+SOURCES = [(f, f[:-4]) for f in config.category_csvs()]
 
 OUT = os.path.join(config.REPACK, "repack_list.csv")
 os.makedirs(os.path.dirname(OUT), exist_ok=True)
@@ -67,9 +59,11 @@ for csv_name, src in SOURCES:
     for r in csv.DictReader(open(csv_path, encoding="utf-8-sig"), delimiter=";"):
         fp = r["file"].replace("/", "\\")
         key = fp.split("\\", 1)[1].lower().replace(".wav", ".wem")
-        wid = path2id.get(key)
-        if not wid and HEX_ID.match(os.path.basename(r.get("src") or "")):
+        if HEX_ID.match(os.path.basename(r.get("src") or "")):
+            # путь file виртуальный: слот — сам файл из unmapped, а не запись карты с тем же путём
             wid = os.path.splitext(os.path.basename(r["src"]))[0].lower()
+        else:
+            wid = path2id.get(key)
         name = os.path.splitext(os.path.basename(fp))[0]
         if (decisions.find(DECISIONS, name) or ("",))[0] == "keep":
             # в игре остаётся оригинал — даже если wav уже был сгенерирован раньше

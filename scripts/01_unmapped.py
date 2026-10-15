@@ -36,6 +36,7 @@ from collections import Counter, defaultdict
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
+from utils import texts
 
 LIST  = os.path.join(config.UNMAPPED, "list.csv")
 MATCH = os.path.join(config.UNMAPPED, "match.csv")
@@ -85,45 +86,20 @@ def norm(text):
     return " ".join(re.sub(r"[^a-z0-9 ]", " ", text).split())
 
 def voice_texts():
-    """VoiceID -> (английские, русские) субтитры из всех таблиц, откуда текст берёт 03_mapper.py."""
-    EO, TM = os.path.join(config.GAMEDATA, "ExcelOutput"), os.path.join(config.GAMEDATA, "TextMap")
-    en = load(os.path.join(TM, "TextMapEN.json"))
-    ru = {}
-    for name in ("TextMapRU_0.json", "TextMapRU_1.json", "TextMapMainRU.json"):
-        p = os.path.join(TM, name)
-        if os.path.exists(p):
-            for k, v in load(p).items(): ru.setdefault(k, v)
-    hashes = defaultdict(list)
-    sent = {}
-    for e in load(os.path.join(EO, "TalkSentenceConfig.json")):
-        h = e.get("TalkSentenceText", {}).get("Hash")
-        if not h: continue
-        sent[e["TalkSentenceID"]] = str(h)
-        if e.get("VoiceID"): hashes[e["VoiceID"]].append(str(h))
-    for e in load(os.path.join(EO, "VoiceAtlas.json")):
-        h = e.get("Voice_M", {}).get("Hash")
-        if h:
-            hashes[e["VoiceID"]].append(str(h))
-            if e.get("AudioID"): hashes[e["AudioID"]].append(str(h))
-    for fname, vk, hk in (("TarotBookSentence.json", "VoiceID", "Sentence"), ("TarotFiles.json", "VoiceID", "Sentence"),
-                          ("B51RacingTR.json", "VoiceID", "TRContent"), ("HeartDialTalk.json", "VoiceID", "SDFText")):
-        p = os.path.join(EO, fname)
-        if not os.path.exists(p): continue
-        for e in load(p):
-            h = e.get(hk) if isinstance(e, dict) else None
-            h = h.get("Hash") if isinstance(h, dict) else h
-            if e.get(vk) and h: hashes[e[vk]].append(str(h))
-    for e in load(os.path.join(EO, "TalkSentenceMultiVoice.json")):
-        if e.get("TalkSentenceID") in sent:
-            for vid in e.get("VoiceIDList", []): hashes[vid].append(sent[e["TalkSentenceID"]])
-    for vid, h in sent.items():
-        hashes[vid].append(h)
-    return {vid: (list(dict.fromkeys(en[h] for h in hs if en.get(h))), [ru[h] for h in hs if ru.get(h)])
-            for vid, hs in hashes.items()}
+    """VoiceID -> (английские, русские) субтитры из всех таблиц, откуда текст берёт 03_mapper.py
+    (utils\\texts.py): речь сверяется со всеми вариантами, 03 выберет один по приоритету."""
+    en, ru, src = texts.textmap_en(), texts.textmap_ru(), texts.Sources()
+    vids = (set(src.voice_sents) | set(src.atlas) | set(src.atlas_audio) | set(src.extra)
+            | set(src.multivoice) | set(src.sent_hash))
+    out = {}
+    for vid in vids:
+        hs = src.all_hashes(vid)
+        out[vid] = (list(dict.fromkeys(en[h] for h in hs if en.get(h))), [ru[h] for h in hs if ru.get(h)])
+    return out
 
 def same_for_genders(texts):
     """Русский текст одинаков для _m и _f — тогда неважно, какой из двух файлов какой."""
-    return all(render(t, "m") == render(t, "f") and not re.search(r"\{(NICKNAME|PLAYER_NAME|MC_NAME|TEXTJOIN)", t, re.I)
+    return all(render(t, "m") == render(t, "f") and not re.search(r"\{(NICKNAME|PLAYER_NAME|MC_NAME)", t, re.I)
                for t in texts)
 
 def virtual_path(src, stem, dirs):
@@ -134,7 +110,8 @@ def virtual_path(src, stem, dirs):
     return os.path.join(src.split(os.sep)[0], d, stem + ".wav")
 
 def pck_order(path):
-    """wem_id файлов pck в порядке их данных (externals)."""
+    """wem_id файлов pck в порядке их данных (externals); None — pck нет или это заглушка."""
+    if not os.path.isfile(path) or os.path.getsize(path) < 32: return None
     with open(path, "rb") as f: data = f.read()
     lang, banks, sounds = struct.unpack_from("<III", data, 12)
     pos = 28 + lang + banks + sounds
@@ -229,6 +206,8 @@ def order_pass(results, pool, have, dirs):
     stats = Counter()
     for pck, files in sorted(by_pck.items()):
         seq = pck_order(os.path.join(config.GAME_AUDIO, pck))
+        if seq is None:
+            print(f"Порядок в pck: {pck} нет в игре — пропуск"); continue
         # якоря: известные файлы pck и уверенные совпадения по уникальному тексту
         items = []
         for i, h in enumerate(seq):
@@ -269,9 +248,18 @@ def order_pass(results, pool, have, dirs):
     by_stem = defaultdict(list)
     for r in results:
         if r["status"] == "new": by_stem[r["stem"].lower()].append(r)
+    # Но если запись уверенно узнана по тексту, а по порядку ей достался файл с непохожей речью —
+    # порядок ошибся (в промежутке был файл реплики без субтитра): такой файл не берём вовсе,
+    # иначе он стал бы главным, а верные файлы — его копиями
+    weak = lambda r: r["method"] == "order" and float(r["score"]) < MIN_LOOSE
     for rs in by_stem.values():
-        rs.sort(key=lambda r: (r["method"] != "order", not r["src"].lower().startswith("external_del"), -float(r["score"])))
+        sure = any(r["method"] == "text" and float(r["score"]) >= MIN_NEW for r in rs)
+        rs.sort(key=lambda r: (sure and weak(r), r["method"] != "order",
+                               not r["src"].lower().startswith("external_del"), -float(r["score"])))
         for r in rs[1:]:
+            if sure and weak(r):
+                r.update(status="ambiguous", method="", file="", stem=""); stats["против текста"] += 1
+                continue
             r.update(status="alias" if r["src"].split(os.sep)[0] != rs[0]["src"].split(os.sep)[0] else "dup", file="")
             stats["в копии"] += 1
     print("Порядок в pck: " + ", ".join(f"{k}: {v}" for k, v in stats.items()))
@@ -316,11 +304,15 @@ def cmd_match():
             for w in n.split():
                 if len(w) > 3: index[w].add(i)
 
+    # только файлы текущей выгрузки (list.csv): в кэше остаются и файлы, которых в датасете
+    # уже нет (pck убран обновлением игры, AnimeWwise узнал имя)
+    with open(LIST, encoding="utf-8-sig", newline="") as f:
+        current = {r["file"] for r in csv.DictReader(f, delimiter=";")}
     asr = {}
     for p in glob.glob(os.path.join(config.UNMAPPED, "asr_*.csv")):
         with open(p, encoding="utf-8-sig", newline="") as f:
-            asr.update((r["file"], r) for r in csv.DictReader(f, delimiter=";"))
-    print(f"Распознано файлов: {len(asr)}")
+            asr.update((r["file"], r) for r in csv.DictReader(f, delimiter=";") if r["file"] in current)
+    print(f"Распознано файлов: {len(asr)} из {len(current)}")
 
     pitch = {}
     pitch_csv = os.path.join(config.UNMAPPED, "pitch.csv")
@@ -426,7 +418,9 @@ def cmd_match():
         for row, sc, by_stem in items:
             stem = chosen.get(id(row))
             if not stem: continue
-            row.update(stem=stem, score=f"{by_stem[stem]:.3f}", status="alias" if has_file else "new",
+            # voicepath — у записи, которой достался файл (в шаге 1 там лучший кандидат,
+            # а место могло найтись только у следующей записи с тем же текстом)
+            row.update(stem=stem, voicepath=vp, score=f"{by_stem[stem]:.3f}", status="alias" if has_file else "new",
                        text_en=next(n for s, n in variants if s == stem))
             if not has_file:
                 row["file"] = virtual_path(row["src"], stem, dirs)

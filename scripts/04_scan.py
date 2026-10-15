@@ -6,6 +6,7 @@
     python 04_scan.py --all              # все найденные главы
     python 04_scan.py --category side0   # только side0
     python 04_scan.py --all-categories   # все категории (chapters + sides + companions + vo + ambient + archive)
+    python 04_scan.py --extra-categories # все, кроме глав chapterN (событийные chapterfate... — тоже)
 """
 import os, csv, re, argparse
 from collections import defaultdict
@@ -13,13 +14,6 @@ from collections import defaultdict
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
-
-# Категории, которые обрабатываются помимо chapterN
-EXTRA_CATEGORIES = [
-    "side", "Side", "companion", "vo", "ambient", "archive",
-    "chapterfate", "chapterfate02", "chapterfinality1", "chaptersummer01",
-    "CG", "bgm"
-]
 
 def scan_chapter(chapter, csv_path, out_dir):
     """Фильтрует mapping.csv по главе chapter -> chapterN.csv"""
@@ -123,6 +117,8 @@ def main():
     g.add_argument("--category", type=str, help="конкретная категория (side0, companion1, vo, ...)")
     g.add_argument("--all-categories", action="store_true",
                    help="все категории (chapters + sides + companions + vo + ambient + archive + ...)")
+    g.add_argument("--extra-categories", action="store_true",
+                   help="все категории, кроме глав chapterN")
     args = ap.parse_args()
 
     csv_path = os.path.join(config.RUN, "mapping.csv")
@@ -170,12 +166,12 @@ def main():
             print(f"{cat}: нет реплик")
         return
 
-    # --- Режим --all-categories ---
-    if args.all_categories:
+    # --- Режим --all-categories / --extra-categories ---
+    if args.all_categories or args.extra_categories:
         all_cats = find_categories(csv_path)
         # Сначала главы
-        chapters = sorted([c for c in all_cats if re.match(r"chapter\d+", c)],
-                          key=lambda x: int(re.search(r"\d+", x).group()))
+        chapters = [] if args.extra_categories else sorted(
+            [c for c in all_cats if re.match(r"chapter\d+", c)], key=lambda x: int(re.search(r"\d+", x).group()))
         for ch in chapters:
             total, with_ru = scan_category(ch, csv_path, out_dir)
             if total:

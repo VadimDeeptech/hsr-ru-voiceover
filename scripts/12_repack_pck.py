@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-12_repack_pck.py — сборка мода под GENDER -> pck_out_<GENDER>\.
+12_repack_pck.py — сборка мода под GENDER -> pck_out_<GENDER>\\.
 База для каждого pck = pck_backup_en, пока в игре стоит наш мод (по манифесту installed.csv),
 иначе папка игры: там оригинал — мод не ставился либо игра заменила файл при обновлении.
 Патч: wem дописывается в конец pck (выравнивание 16), в записи обновляются size/offset.
@@ -83,6 +83,18 @@ for r in csv.DictReader(open(os.path.join(REPACK, "repack_list.csv"), encoding="
     if os.path.exists(os.path.join(WEMDIR, wid + ".wem")) and wid in id2pck:
         groups.setdefault(id2pck[wid], []).append(wid)
 
+if not groups:
+    print(f"!! Нечего собирать: нет ни одного wem из repack_list.csv в {WEMDIR} (запущен ли collect?)")
+    sys.exit(1)
+
+# pck прошлых сборок, в которые эта ничего не кладёт (например, все их реплики получили keep):
+# install поставил бы их как свежие. Без них install вернёт в игру оригинал.
+current = {p.lower() for p in groups}
+for f in os.listdir(OUTDIR):
+    if f.lower().endswith(".pck") and f.lower() not in current:
+        os.remove(os.path.join(OUTDIR, f))
+        print(f"  удалён {f}: в этой сборке не меняется")
+
 total = 0
 for pck_name, wids in groups.items():
     dst = os.path.join(OUTDIR, pck_name)
@@ -95,6 +107,11 @@ for pck_name, wids in groups.items():
         continue
     with open(src, "rb") as f:
         data = bytearray(f.read())
+    if len(data) < 32:
+        print(f"  !! {src}: заглушка {len(data)} байт вместо pck — пропуск")
+        if os.path.exists(dst):
+            os.remove(dst)
+        continue
     lang, banks, sounds = struct.unpack_from("<III", data, 12)
     ext = struct.unpack_from("<I", data, 24)[0]
     pos = 28 + lang + banks + sounds

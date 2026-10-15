@@ -4,17 +4,18 @@ pipeline.py — единая точка входа для всех шагов п
 
 Использование:
     python pipeline.py doctor                     — проверка окружения
-    python pipeline.py chapter N [--gender m|f]   — полный цикл для главы N (без установки)
-    python pipeline.py all [--gender m|f]         — полный цикл для всех глав (без установки)
+    python pipeline.py all [--gender m|f]         — полный цикл для всего контента (без установки)
+    python pipeline.py chapter [N] [--gender m|f] — полный цикл для главы N или всех глав
+    python pipeline.py extra [категория]          — полный цикл для одной категории или всех, кроме глав chapterN
     python pipeline.py install --gender m|f       — установка в игру (отдельно!)
     python pipeline.py install --uninstall        — откат
 
     # Отладка/разработка (отдельные шаги):
     python pipeline.py unmapped                   — узнать файлы из unmapped по речи
     python pipeline.py map
-    python pipeline.py scan [--chapter N|--all]
+    python pipeline.py scan [--chapter N|--all|--category C|--all-categories|--extra-categories]
     python pipeline.py audit                      — сверка звука оригинала с текстом
-    python pipeline.py generate [--chapter N|--all] [--limit N]
+    python pipeline.py generate [--chapter N|--all|--category C|--all-categories|--extra-categories] [--limit N]
     python pipeline.py build
     python pipeline.py findpck
     python pipeline.py wwise --gender m|f
@@ -116,7 +117,9 @@ def cmd_map(_args):
 
 def cmd_scan(args):
     a = []
-    if getattr(args, 'all_categories', False):
+    if getattr(args, 'extra_categories', False):
+        a.append("--extra-categories")
+    elif getattr(args, 'all_categories', False):
         a.append("--all-categories")
     elif getattr(args, 'category', None):
         a += ["--category", args.category]
@@ -213,7 +216,9 @@ def cmd_audit(args):
 
 def cmd_generate(args):
     a = []
-    if getattr(args, 'all_categories', False):
+    if getattr(args, 'extra_categories', False):
+        a.append("--extra-categories")
+    elif getattr(args, 'all_categories', False):
         a.append("--all-categories")
     elif getattr(args, 'category', None):
         a += ["--category", args.category]
@@ -268,24 +273,9 @@ def cmd_utils(args):
         print(f"Неизвестная утилита: {args.util_cmd}")
         sys.exit(1)
     script_path = os.path.join(config.SCRIPTS, script)
-    cmd = [sys.executable, script_path]
+    cmd = [sys.executable, script_path] + (["--apply"] if getattr(args, "apply", False) else [])
     print(f">>> {' '.join(cmd)}\n")
     sys.exit(run_cmd(cmd))
-
-
-def cmd_full(args):
-    """Шаги 1-9: unmapped + map + scan + audit + generate + build + findpck"""
-    cmd_unmapped(args)
-    cmd_map(args)
-    cmd_scan(args)
-    cmd_audit(args)
-    cmd_generate(args)
-    cmd_build(args)
-    cmd_findpck(args)
-    print("\nДалее: python pipeline.py wwise --gender m|f  (затем WwiseConsole, см. вывод)")
-    print("       python pipeline.py collect --gender m|f")
-    print("       python pipeline.py repack --gender m|f")
-    print("       python pipeline.py install --gender m|f")
 
 
 def _run_wwise_console(gender):
@@ -404,18 +394,15 @@ def cmd_all(args):
 
 def cmd_extra(args):
     """Полный цикл для побочного контента: map + scan + generate + build + findpck + wwise + collect + repack"""
-    cat = args.category or "все категории"
+    cat = args.category or "все категории, кроме глав chapterN"
     print(f"=== Побочный контент ({cat}), пол {args.gender} ===\n")
     if args.update:
         _update_submodules()
     cmd_unmapped(args)
     cmd_map(args)
-    if args.category:
-        args.all = False
-        args.all_categories = False
-    else:
-        args.all = False
-        args.all_categories = True
+    args.all = False
+    args.all_categories = False
+    args.extra_categories = not args.category
     cmd_scan(args)
     cmd_audit(args)
     cmd_generate(args)
@@ -439,6 +426,7 @@ def add_chapter_args(p):
     g.add_argument("--all", action="store_true", help="все найденные главы")
     g.add_argument("--category", type=str, help="конкретная категория (side0, companion1, vo, ...)")
     g.add_argument("--all-categories", action="store_true", help="все категории (chapters + sides + companions + vo + ...)")
+    g.add_argument("--extra-categories", action="store_true", help="все категории, кроме глав chapterN")
 
 
 def main():
@@ -459,7 +447,7 @@ def main():
     p.set_defaults(fn=cmd_chapter)
 
     # Побочный контент: одна категория или все
-    p = sub.add_parser("extra", help="полный цикл для побочного контента: одна категория или все (без install)")
+    p = sub.add_parser("extra", help="полный цикл для побочного контента: одна категория или все, кроме глав chapterN (без install)")
     p.add_argument("category", type=str, nargs="?", default=None,
                    help="категория (side0, companion1, vo, ambient, archive, ...)")
     p.add_argument("--gender", choices=["m", "f"], default="m")
@@ -518,7 +506,8 @@ def main():
     # === Утилиты ===
     p = sub.add_parser("utils", help="диагностика и утилиты")
     utils_sub = p.add_subparsers(dest="util_cmd", required=True)
-    utils_sub.add_parser("find-missing-text", help="найти таблицы с текстом для voiceid без текста")
+    u = utils_sub.add_parser("find-missing-text", help="найти таблицы с текстом для voiceid без текста")
+    u.add_argument("--apply", action="store_true", help="дописать надёжные новые таблицы в scripts\\utils\\extra_tables.csv")
     p.set_defaults(fn=cmd_utils)
 
     args = ap.parse_args()

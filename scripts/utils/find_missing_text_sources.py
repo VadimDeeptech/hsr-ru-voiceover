@@ -3,7 +3,8 @@
 find_missing_text_sources.py — диагностика: какие таблицы содержат текст для voiceid без текста.
 
 Запуск:
-    python scripts/utils/find_missing_text_sources.py
+    python scripts/utils/find_missing_text_sources.py           # только показать
+    python scripts/utils/find_missing_text_sources.py --apply   # и дописать новые таблицы в extra_tables.csv
 
 Показывает:
     - сколько voiceid без текста в mapping.csv
@@ -11,22 +12,21 @@ find_missing_text_sources.py — диагностика: какие таблиц
     - какие колонки содержат хэш текста
     - есть ли хэш в TextMap RU
 """
-import os, json, csv, sys
-from collections import Counter
+import os, json, csv, sys, argparse, datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 import config
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils import texts
 
-EO = os.path.join(config.GAMEDATA, "ExcelOutput")
-TM = os.path.join(config.GAMEDATA, "TextMap")
+ap = argparse.ArgumentParser(description="Какие таблицы содержат текст для VoiceID без текста")
+ap.add_argument("--apply", action="store_true", help="дописать надёжные новые таблицы в extra_tables.csv")
+args = ap.parse_args()
 
-# TextMap RU
-textmap = {}
-for name in ("TextMapRU_0.json", "TextMapRU_1.json", "TextMapMainRU.json"):
-    p = os.path.join(TM, name)
-    if os.path.exists(p):
-        for k, v in json.load(open(p, encoding="utf-8")).items():
-            textmap.setdefault(k, v)
+EO = texts.EO
+textmap = texts.textmap_ru()
+# таблицы, которые utils\texts.py уже читает
+KNOWN = {"TalkSentenceConfig.json", "VoiceAtlas.json", "TalkSentenceMultiVoice.json"} | {t[0] for t in texts.EXTRA_TABLES}
 
 # mapping.csv -> voiceid без текста
 mapping_path = os.path.join(config.RUN, "mapping.csv")
@@ -60,7 +60,7 @@ for fname in files:
         continue
 
     overlaps = 0
-    hash_col = None
+    hash_col = vid_col = None
     sample_hash = None
     sample_text = None
 
@@ -81,30 +81,49 @@ for fname in files:
                         if isinstance(h, dict):
                             h = h.get("Hash")
                         if h:
-                            hash_col = hk
+                            hash_col, vid_col = hk, vk
                             sample_hash = str(h)
                             sample_text = textmap.get(sample_hash, "")
                             break
                     break
 
     if overlaps > 0:
-        in_textmap = "ДА" if sample_text else "нет"
-        results.append((fname, overlaps, hash_col, sample_text[:50] if sample_text else ""))
+        results.append((fname, overlaps, hash_col, sample_text[:50] if sample_text else "", vid_col))
 
 print(f"\nНайдено таблиц с совпадениями: {len(results)}")
 print(f"{'Таблица':<40} {'Совпадений':>10} {'Хэш-колонка':<20} {'Текст в RU':>10}")
 print("-" * 90)
-for fname, overlaps, hash_col, sample in sorted(results, key=lambda x: -x[1]):
+for fname, overlaps, hash_col, sample, _ in sorted(results, key=lambda x: -x[1]):
     print(f"{fname:<40} {overlaps:>10} {hash_col or '':<20} {sample:>10}")
 
+# Кандидаты в extra_tables.csv. Добавляются только надёжные: одна колонка VoiceID (не список),
+# у примера есть русский текст, колонка текста — не название/заголовок (Name, Title):
+# чужая таблица дала бы в озвучку не тот текст
+new, manual = [], []
+for f, n, hk, sample, vk in results:
+    if n <= 10 or not hk or f in KNOWN:
+        continue
+    safe = vk != "VoiceIDList" and sample and not any(x in hk for x in ("Name", "Title"))
+    (new if safe else manual).append((f, vk, hk, sample))
+
 print("\nРекомендация:")
-print("Добавь в 03_mapper.py строки вида:")
-for fname, overlaps, hash_col, _ in results:
-    if overlaps > 10 and hash_col:
-        if fname == "TalkSentenceMultiVoice.json":
-            # Особый случай: TalkSentenceID -> VoiceIDList -> hash из TalkSentenceConfig
-            print(f'    # {fname}: обрабатывается отдельно через sent_hash (уже в коде)')
-        else:
-            # Угадываем vid_key по имени файла
-            vid_key = "VoiceID"  # чаще всего
-            print(f'    load_extra("{fname}", "{vid_key}", "{hash_col}")')
+if not new and not manual:
+    print(f"Новых таблиц нет: все найденные уже читаются ({texts.EXTRA_CSV}).")
+for f, vk, hk, sample in new:
+    print(f"  + {f}: {vk} -> {hk}, пример: «{sample}»")
+for f, vk, hk, sample in manual:
+    print(f"  ? {f}: {vk} -> {hk}, пример: «{sample}» — проверь вручную, автоматически не добавляется")
+if new:
+    if args.apply:
+        with open(texts.EXTRA_CSV, "rb") as f:
+            ends_nl = f.read().endswith(b"\n")
+        with open(texts.EXTRA_CSV, "a", encoding="utf-8", newline="") as f:
+            if not ends_nl:
+                f.write("\r\n")   # файл правили руками и не закончили строку
+            wr = csv.writer(f, delimiter=";")
+            for t, vk, hk, sample in new:
+                wr.writerow([t, vk, hk, f"find-missing-text {datetime.date.today()}: «{sample}»"])
+        print(f"Добавлено в {texts.EXTRA_CSV}: {len(new)}. Дальше: python pipeline.py map")
+    else:
+        print(f"Отмеченные + добавит в {texts.EXTRA_CSV} запуск с --apply "
+              f"(python pipeline.py utils find-missing-text --apply)")

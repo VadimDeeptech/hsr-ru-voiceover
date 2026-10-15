@@ -22,6 +22,7 @@ result = {}
 pcks = [f for f in os.listdir(GAME) if f.lower().endswith(".pck")]
 for i, pck in enumerate(sorted(pcks), 1):
     data = open(os.path.join(GAME, pck), "rb").read()
+    if len(data) < 32: continue   # заглушка (pck убран из игры)
     lang, banks, sounds = struct.unpack_from("<III", data, 12)
     ext = struct.unpack_from("<I", data, 24)[0]
     if ext == 0: continue

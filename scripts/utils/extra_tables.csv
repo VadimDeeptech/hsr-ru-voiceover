@@ -1,0 +1,5 @@
+table;voiceid_column;text_column;comment
+TarotBookSentence.json;VoiceID;Sentence;
+TarotFiles.json;VoiceID;Sentence;
+B51RacingTR.json;VoiceID;TRContent;
+HeartDialTalk.json;VoiceID;SDFText;

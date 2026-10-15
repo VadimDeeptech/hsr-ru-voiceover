@@ -46,9 +46,11 @@ for r in rows:
         wav = os.path.join(wav_dir, name + ".wav")
         gender_files += 1
     else:
-        wav = os.path.join(wav_dir, f"{name}__{GENDER}.wav")
-        if not os.path.exists(wav):
-            wav = os.path.join(wav_dir, name + ".wav")
+        # текст с тегами пола -> <name>__m/__f.wav, без них -> <name>.wav. Если есть оба,
+        # текст сменился в патче: актуален сгенерированный позже
+        found = [p for p in (os.path.join(wav_dir, f"{name}__{GENDER}.wav"), os.path.join(wav_dir, name + ".wav"))
+                 if os.path.exists(p)]
+        wav = max(found, key=os.path.getmtime) if found else os.path.join(wav_dir, name + ".wav")
 
     if not os.path.exists(wav):
         missing += 1

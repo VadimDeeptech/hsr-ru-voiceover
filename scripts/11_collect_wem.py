@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""11_collect_wem.py — сбор wem после конвертации -> repack\<GENDER>\
+"""11_collect_wem.py — сбор wem после конвертации -> repack\\<GENDER>\\
 
 Запуск: python 11_collect_wem.py --gender m|f
 """

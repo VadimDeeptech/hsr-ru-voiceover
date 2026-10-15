@@ -154,7 +154,27 @@ Get-ChildItem "$src\*.pck" | ForEach-Object {
     Write-Manifest $man
     $count++
 }
+
+# В игре наш мод прошлой сборки, а в новой этот pck не меняется (все его реплики получили keep и т.п.):
+# возвращаем оригинал из бэкапа. Только если файл в игре — по-прежнему наш (игра его не заменила).
+$built = @{}
+Get-ChildItem "$src\*.pck" | ForEach-Object { $built[$_.Name] = $true }
+$reverted = 0
+foreach ($name in @($man.Keys)) {
+    $e = $man[$name]
+    if ($built.ContainsKey($name) -or $e.state -ne 'mod') { continue }
+    $orig = Join-Path $eng $name
+    $bakf = Join-Path $bak $name
+    if (-not (Test-Stamp $orig $e) -or -not (Test-Path -LiteralPath $bakf)) { continue }
+    Copy-Item -LiteralPath $bakf "$orig.tmp" -Force -ErrorAction Stop
+    Move-Item -LiteralPath "$orig.tmp" $orig -Force -ErrorAction Stop
+    $man[$name] = New-Entry $name 'orig' $orig
+    Write-Manifest $man
+    $reverted++
+}
+
 Write-Host "Mod installed (gender: $Gender), files: $count. Backup: $bak"
+if ($reverted) { Write-Host "Restored original for $reverted pck that are no longer in the mod" }
 if ($stale) { Write-Host "WARNING: $stale pck were replaced by the game after the mod was built (game update) - NOT installed. Run 'python pipeline.py repack --gender $Gender' and install again" }
 if ($refreshed) { Write-Host "Game files changed since last install (game update): backup refreshed for $refreshed pck" }
 if ($untracked) { Write-Host "WARNING: $untracked pck have a backup made before install tracking existed - kept as is. If the game was updated since, restore the game files in the launcher and delete $bak" }

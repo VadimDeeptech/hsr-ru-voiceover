@@ -1,44 +1,44 @@
 # -*- coding: utf-8 -*-
 """03_mapper.py — маппинг wav -> VoiceID -> текст. Результат: mapping.csv
+Таблицы с текстом по VoiceID — в utils\\texts.py (общие с 01_unmapped.py).
 v3: гендерные суффиксы _m/_f (IsPlayerInvolved: true в VoiceConfig).
     VoiceConfig хранит БАЗОВЫЙ VoicePath (chapter0_2_mar7th_141),
     а файлы на диске сплитятся на *_m.wav / *_f.wav.
     Ищем с отрезанным суффиксом, пол пишем в колонку gender.
 """
-import os, json, csv, re
+import os, csv, re
 from collections import Counter
 
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
-from utils import decisions
+from utils import decisions, texts
 
 DECISIONS = decisions.load(auto=False)
 
-EO   =os.path.join(config.GAMEDATA, "ExcelOutput")
-TM   = os.path.join(config.GAMEDATA, "TextMap")
 DS   = config.DATASET
 OUT  = config.RUN
 os.makedirs(OUT, exist_ok=True)
 
-def load(p):
-    with open(p, encoding="utf-8") as f: return json.load(f)
-
 print("Загружаю VoiceConfig...")
 voice_by_path = {}
-for e in load(os.path.join(EO, "VoiceConfig.json")):
+for e in texts.load(os.path.join(texts.EO, "VoiceConfig.json")):
     vp = e.get("VoicePath")
     if vp: voice_by_path[vp.lower()] = (e["VoiceID"], e.get("VoiceType", ""))
 
-print("Загружаю TalkSentenceConfig...")
-sent_hash = {}
-voice_sents = {}   # VoiceID -> [TalkSentenceID, ...] по полю VoiceID самой строки
-for e in load(os.path.join(EO, "TalkSentenceConfig.json")):
-    h = e.get("TalkSentenceText", {}).get("Hash")
-    if not h: continue
-    sent_hash[e["TalkSentenceID"]] = str(h)
-    if e.get("VoiceID"):
-        voice_sents.setdefault(e["VoiceID"], []).append(e["TalkSentenceID"])
+print("Загружаю таблицы с текстом (utils\\texts.py)...")
+sources = texts.Sources()
+sent_hash, voice_sents = sources.sent_hash, sources.voice_sents
+# при нескольких ссылках на один VoiceID берётся последняя
+atlas            = {vid: v[-1] for vid, v in sources.atlas.items()}
+atlas_by_audioid = {vid: v[-1] for vid, v in sources.atlas_audio.items()}
+extra_hash       = {vid: v[-1] for vid, v in sources.extra.items()}
+tsmv_map         = {vid: v[-1] for vid, v in sources.multivoice.items()}
+print(f"  Доп.таблиц: {len(extra_hash)} записей | TalkSentenceMultiVoice: {len(tsmv_map)} записей")
+
+print("Загружаю TextMap RU + EN...")
+textmap = texts.textmap_ru()
+textmap_en = texts.textmap_en()
 
 def sentence_id(voiceid):
     """Строка субтитра для звука и источник текста (колонка text_source). Какой звук играет
@@ -60,60 +60,6 @@ def following(sid, n):
         if textmap.get(sent_hash[i]): res.append(sent_hash[i])
         i += 1
     return res
-
-print("Загружаю VoiceAtlas...")
-atlas = {}
-atlas_by_audioid = {}
-for e in load(os.path.join(EO, "VoiceAtlas.json")):
-    h = e.get("Voice_M", {}).get("Hash")
-    if h:
-        atlas[e["VoiceID"]] = (e.get("AvatarID"), str(h))
-        if e.get("AudioID"):
-            atlas_by_audioid[e["AudioID"]] = (e.get("AvatarID"), str(h))
-
-print("Загружаю TextMap RU + EN...")
-textmap = {}
-for name in ("TextMapRU_0.json", "TextMapRU_1.json", "TextMapMainRU.json"):
-    p = os.path.join(TM, name)
-    if os.path.exists(p):
-        for k, v in load(p).items(): textmap.setdefault(k, v)
-textmap_en = load(os.path.join(TM, "TextMapEN.json"))
-
-# Дополнительные таблицы с текстом по VoiceID
-extra_hash = {}
-
-def load_extra(fname, vid_key, hash_key):
-    """Загружает таблицу вида [{VoiceID: ..., Hash: ...}, ...] -> {vid: hash}"""
-    p = os.path.join(EO, fname)
-    if not os.path.exists(p):
-        return
-    data = load(p)
-    if not isinstance(data, list) or len(data) == 0 or not isinstance(data[0], dict):
-        return
-    for e in data:
-        vid = e.get(vid_key)
-        h = e.get(hash_key)
-        if isinstance(h, dict):
-            h = h.get("Hash")
-        if vid and h:
-            extra_hash[vid] = str(h)
-
-print("Загружаю дополнительные таблицы...")
-load_extra("TarotBookSentence.json", "VoiceID", "Sentence")
-load_extra("TarotFiles.json", "VoiceID", "Sentence")
-load_extra("B51RacingTR.json", "VoiceID", "TRContent")
-load_extra("HeartDialTalk.json", "VoiceID", "SDFText")
-print(f"  Доп.таблиц: {len(extra_hash)} записей")
-
-# TalkSentenceMultiVoice: TalkSentenceID -> VoiceIDList -> TalkSentenceConfig hash
-tsmv = load(os.path.join(EO, "TalkSentenceMultiVoice.json"))
-tsmv_map = {}  # voiceid -> sentence_hash
-for e in tsmv:
-    tsid = e.get("TalkSentenceID")
-    if tsid and tsid in sent_hash:
-        for vid in e.get("VoiceIDList", []):
-            tsmv_map[vid] = sent_hash[tsid]
-print(f"  TalkSentenceMultiVoice: {len(tsmv_map)} записей")
 
 def add_row(rel, stem, voiceid, vtype, gender, src=""):
     """Строка mapping.csv: текст по VoiceID. src — настоящий файл, если rel виртуальный (unmapped)."""
@@ -203,7 +149,8 @@ if os.path.exists(match_csv):
         for r in csv.DictReader(f, delimiter=";"):
             stem = r["stem"].lower()
             if r["status"] != "new" or stem in known: continue
-            gender = stem[-1] if r["voicepath"].lower() != stem else ""
+            # пол — по суффиксу файла записи (stem = voicepath + _m/_f)
+            gender = stem[-1] if stem in (r["voicepath"].lower() + "_m", r["voicepath"].lower() + "_f") else ""
             hit = voice_by_path.get(r["voicepath"].lower())
             if not hit: continue
             stats["unmapped_recovered"] += 1
