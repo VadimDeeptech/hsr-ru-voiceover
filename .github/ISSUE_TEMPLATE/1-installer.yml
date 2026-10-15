@@ -1,0 +1,53 @@
+name: Проблема с установщиком
+description: Установщик не запускается, выдаёт ошибку, не находит игру, озвучка не появилась после установки
+title: "[Установка] "
+labels: ["installer"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Перед отправкой проверьте пункты из README.txt в архиве: язык озвучки в игре — **English**, английская озвучка скачана в лаунчере, игра и лаунчер закрыты, архив распакован целиком.
+  - type: input
+    id: mod-version
+    attributes:
+      label: Версия мода
+      description: Из имени архива, например HSR-RU-Voiceover-1.0.0
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: input
+    id: game-version
+    attributes:
+      label: Версия игры
+      placeholder: "4.6"
+    validations:
+      required: true
+  - type: dropdown
+    id: launcher
+    attributes:
+      label: Откуда установлена игра
+      options:
+        - HoYoPlay (официальный лаунчер)
+        - Epic Games Store
+        - Другое (напишите ниже)
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: Что произошло
+      description: Что вы делали, что ожидали и что получилось. Текст ошибки или скриншот окна.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Журнал установщика
+      description: |
+        Содержимое файла `%LOCALAPPDATA%\HSR-RU-Voiceover\install.log` (вставьте путь в адресную строку Проводника). Можно только последние строки.
+      render: text
+  - type: input
+    id: windows
+    attributes:
+      label: Версия Windows
+      placeholder: "Windows 11 24H2"

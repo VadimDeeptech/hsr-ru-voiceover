@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Сообщить об уязвимости
+    url: https://github.com/VadimDeeptech/hsr-ru-voiceover/security/advisories/new
+    about: Не публикуйте уязвимости в открытых issue — отправьте их приватно.

@@ -1,0 +1,58 @@
+name: Проблема с озвучкой
+description: Реплика не совпадает с субтитром, неправильное ударение или произношение, обрыв, шум, чужой голос
+title: "[Озвучка] "
+labels: ["voice"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Озвучка сгенерирована нейросетью, поэтому ошибки в отдельных репликах возможны — сообщения о них помогают их исправить.
+        Катсцены (видеоролики) не озвучиваются, это не ошибка. Реплики, добавленные в игру после выхода версии мода, звучат на английском до следующей версии.
+  - type: input
+    id: mod-version
+    attributes:
+      label: Версия мода
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: problem
+    attributes:
+      label: Что не так
+      options:
+        - Звук не совпадает с субтитром
+        - Неправильное ударение или произношение
+        - Обрыв, проглоченные слова, шум, артефакты
+        - Голос не того персонажа
+        - Сильный акцент или неестественная интонация
+        - Реплика осталась на английском
+        - Другое
+    validations:
+      required: true
+  - type: input
+    id: character
+    attributes:
+      label: Персонаж
+      placeholder: "Март 7"
+    validations:
+      required: true
+  - type: input
+    id: where
+    attributes:
+      label: Где встречается
+      description: Квест, задание, локация или NPC
+      placeholder: "Задание «...», разговор с ... на ..."
+    validations:
+      required: true
+  - type: textarea
+    id: subtitle
+    attributes:
+      label: Текст реплики
+      description: Субтитр как в игре. Если ошибка в одном слове — укажите какое и как оно должно звучать.
+    validations:
+      required: true
+  - type: textarea
+    id: media
+    attributes:
+      label: Видео или скриншот
+      description: Необязательно, но очень помогает. Можно перетащить файл сюда или дать ссылку.
