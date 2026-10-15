@@ -1,8 +1,12 @@
 # HSR RU Voiceover
 
-Русская озвучка диалогов Honkai: Star Rail. Генерация — CosyVoice 3, тексты — русский TextMap из дампа геймдаты ([Dimbreath/turnbasedgamedata](https://gitlab.com/Dimbreath/turnbasedgamedata)).
+Русская озвучка диалогов Honkai: Star Rail. Генерация — CosyVoice 3, образцы голосов — английские wav из игры (извлекаются с помощью [AnimeWwise](https://github.com/Escartem/AnimeWwise)), тексты — русский TextMap из дампа геймдаты ([Dimbreath/turnbasedgamedata](https://gitlab.com/Dimbreath/turnbasedgamedata)).
 
 > Катсцены (предрендеренные .usm) не озвучиваются. Только диалоги.
+
+> ⚠️ Неофициальный фанатский проект, не связан с HoYoverse. Озвучка сгенерирована нейросетью. Изменение файлов игры может нарушать её пользовательское соглашение — подробнее в разделе [Дисклеймер](#дисклеймер).
+
+Готовая озвучка для игроков и обсуждение — [Playground](https://users.playground.ru/8181259/). Ошибки и предложения по коду — GitHub Issues.
 
 ## Установка
 
@@ -271,3 +275,31 @@ python pipeline.py install --uninstall
 - Docker Desktop
 - Wwise 2025.1+ (Audiokinetic)
 - Honkai: Star Rail
+
+## Используется
+
+| Проект | Для чего | Лицензия |
+|---|---|---|
+| [CosyVoice](https://github.com/FunAudioLLM/CosyVoice) (FunAudioLLM) | синтез речи с клонированием голоса | Apache-2.0 |
+| [Fun-CosyVoice3-0.5B](https://huggingface.co/FunAudioLLM/Fun-CosyVoice3-0.5B-2512) (FunAudioLLM) | модель синтеза речи | Apache-2.0 |
+| [cosyvoice-tts-api](https://github.com/x0152/cosyvoice-tts-api) (x0152) | HTTP-сервер поверх CosyVoice; клонируется при сборке образа в `hsr-cosyvoice/Dockerfile` | не указана |
+| [openai-whisper](https://github.com/openai/whisper) (OpenAI) | распознавание английской речи: сверка с текстом, unmapped | MIT (код и веса) |
+| [AnimeWwise](https://github.com/Escartem/AnimeWwise) (Escartem) | извлечение wav из pck игры; подмодуль, код не распространяется | CC BY-NC-SA 4.0 |
+| [turnbasedgamedata](https://gitlab.com/Dimbreath/turnbasedgamedata) (Dimbreath) | тексты реплик и данные игры; подмодуль | не указана |
+| [Wwise](https://www.audiokinetic.com/) (Audiokinetic) | конвертация в wem; ставится отдельно | лицензия Audiokinetic |
+
+Спасибо авторам этих проектов. Отдельное спасибо Dimbreath за дампы данных игры.
+
+## Лицензия
+
+Код репозитория распространяется под лицензией [MIT](LICENSE).
+
+Лицензия не распространяется на сторонние проекты из таблицы выше и на готовую озвучку. Озвучка распространяется бесплатно и только для некоммерческого использования. Права на игру, персонажей и оригинальную озвучку принадлежат их владельцам.
+
+## Дисклеймер
+
+- Неофициальный фанатский проект. Не связан с HoYoverse / COGNOSPHERE и не одобрен ими. Honkai: Star Rail и все связанные с ней материалы принадлежат их правообладателям.
+- Русская озвучка сгенерирована нейросетью по образцам голосов из оригинальной английской озвучки игры. Это не работа актёров озвучки и не их голоса.
+- Изменение файлов клиента игры может нарушать пользовательское соглашение. Устанавливая мод, вы делаете это на свой страх и риск: ответственность за возможные последствия для аккаунта лежит на вас.
+- Проверка целостности файлов в лаунчере игры (или обновление игры) вернёт оригинальные файлы озвучки. В этом случае установку мода нужно повторить.
+- Проект предоставляется «как есть», без каких-либо гарантий.
