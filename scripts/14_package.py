@@ -71,7 +71,11 @@ if not rows:
 # ---- общие и различающиеся по полу ----
 plan = []   # (pck, wem_id, вариант, путь)
 diff = only_one = 0
-for pck, wid, have in rows:
+if len(genders) == 2:
+    print(f"Сравнение wem m и f: {len(rows)} реплик")
+for k, (pck, wid, have) in enumerate(rows, 1):
+    if len(genders) == 2 and k % 10000 == 0:
+        print(f"  сравнено {k}/{len(rows)}")
     if len(genders) == 1:
         plan.append((pck, wid, "common", have[genders[0]]))
     elif len(have) == 2 and (os.path.samefile(have["m"], have["f"]) or filecmp.cmp(have["m"], have["f"], shallow=False)):
