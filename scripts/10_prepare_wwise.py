@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-08_prepare_wwise.py — staging + externals.wsources под GENDER. Запускать для m и f.
+10_prepare_wwise.py — staging + externals.wsources под GENDER. Запускать для m и f.
 wav ищется в hsr-generate\\output_ru\\<src> (src — колонка из repack_list.csv).
 Файлы с зашитым гендером (<name>_m/_f.wav) идут в ОБА репака как есть —
 игра сама выбирает _m.wem/_f.wem по полу Первопроходца.
 Требуется: проект hsr-wwise.wproj с ShareSet "Vorbis_RU" (Vorbis, SampleRate Auto), Wwise GUI закрыт.
 
-Запуск: python 08_prepare_wwise.py --gender m|f
+Запуск: python 10_prepare_wwise.py --gender m|f
 """
 import os, csv, shutil, argparse, sys
 

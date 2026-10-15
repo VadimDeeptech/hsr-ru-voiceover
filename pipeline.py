@@ -10,6 +10,7 @@ pipeline.py — единая точка входа для всех шагов п
     python pipeline.py install --uninstall        — откат
 
     # Отладка/разработка (отдельные шаги):
+    python pipeline.py unmapped                   — узнать файлы из unmapped по речи
     python pipeline.py map
     python pipeline.py scan [--chapter N|--all]
     python pipeline.py audit                      — сверка звука оригинала с текстом
@@ -110,7 +111,7 @@ def cmd_doctor(_args):
 
 
 def cmd_map(_args):
-    run_script("01_mapper.py")
+    run_script("03_mapper.py")
 
 
 def cmd_scan(args):
@@ -123,41 +124,45 @@ def cmd_scan(args):
         a.append("--all")
     elif args.chapter is not None:
         a += ["--chapter", str(args.chapter)]
-    run_script("02_scan.py", a)
+    run_script("04_scan.py", a)
 
 
 AUDIT_IMAGE = "hsr-cosyvoice-cosyvoice"   # образ CosyVoice: в нём уже есть torch + whisper
 
 
-def _audit_pending():
-    """Сколько записей из mapping.csv ещё не распознано."""
+def _audit_pending(list_csv, asr_dir):
+    """Сколько записей из list_csv ещё не распознано."""
     done = set()
-    for p in glob.glob(os.path.join(config.ASR, "asr_*.csv")):
+    for p in glob.glob(os.path.join(asr_dir, "asr_*.csv")):
         with open(p, encoding="utf-8-sig", newline="") as f:
             done |= {r["file"] for r in csv.DictReader(f, delimiter=";")}
-    with open(os.path.join(config.RUN, "mapping.csv"), encoding="utf-8-sig", newline="") as f:
+    with open(list_csv, encoding="utf-8-sig", newline="") as f:
         return sum(1 for r in csv.DictReader(f, delimiter=";") if r["file"] not in done)
 
 
-def _run_transcribe():
-    """Распознаёт речь в ещё не проверенных оригиналах (Whisper в контейнерах на образе CosyVoice)."""
-    pending = _audit_pending()
+def _run_transcribe(list_csv=None, asr_dir=None, label="Сверка"):
+    """Распознаёт речь в ещё не проверенных оригиналах (Whisper в контейнерах на образе CosyVoice).
+    По умолчанию — записи mapping.csv в hsr-generate\\audit\\asr."""
+    list_csv = list_csv or os.path.join(config.RUN, "mapping.csv")
+    asr_dir = asr_dir or config.ASR
+    pending = _audit_pending(list_csv, asr_dir)
     if not pending:
-        print("Сверка: новых записей для распознавания нет.\n")
+        print(f"{label}: новых записей для распознавания нет.\n")
         return
     # распознавание упирается в один поток CPU — большой объём делим на части
     # (audit_runners в config.toml); на малый объём не стоит грузить модель несколько раз
     shards = config.AUDIT_RUNNERS if pending > 1500 else 1
-    print(f">>> Сверка: распознаю {pending} записей, потоков: {shards}\n")
+    print(f">>> {label}: распознаю {pending} записей, потоков: {shards}\n")
     procs = []
     for k in range(shards):
         cmd = ["docker", "run", "--rm", "--gpus", "all",
                "-v", f"{config.DATASET}:/data:ro",
-               "-v", f"{config.RUN}:/work:ro",
-               "-v", f"{config.ASR}:/asr",
+               "-v", f"{os.path.dirname(list_csv)}:/work:ro",
+               "-v", f"{asr_dir}:/asr",
                "-v", f"{config.SCRIPTS}:/scripts:ro",
                "-v", f"{config.WHISPER_CACHE}:/root/.cache/whisper",
-               AUDIT_IMAGE, "python", "/scripts/03_audit_transcribe.py", "--shard", f"{k}/{shards}"]
+               AUDIT_IMAGE, "python", "/scripts/05_audit_transcribe.py", "--shard", f"{k}/{shards}",
+               "--mapping", f"/work/{os.path.basename(list_csv)}"]
         procs.append(subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                       encoding="utf-8", errors="replace"))
 
@@ -176,13 +181,34 @@ def _run_transcribe():
     print()
 
 
+def cmd_unmapped(args):
+    """Шаги 1-2: файлы из unmapped — распознать речь и найти запись VoiceConfig по тексту (01_unmapped.py).
+    Сопоставление запускается и с --no-audit: по уже распознанному."""
+    run_script("01_unmapped.py", ["list"])
+    if getattr(args, "no_audit", False):
+        print("Распознавание unmapped пропущено (--no-audit).\n")
+    else:
+        _run_transcribe(os.path.join(config.UNMAPPED, "list.csv"), config.UNMAPPED, "Unmapped")
+        # высота голоса — различить _m/_f, когда английский текст у них один
+        print(">>> Unmapped: высота голоса\n")
+        rc = run_cmd(["docker", "run", "--rm",
+                      "-v", f"{config.DATASET}:/data:ro",
+                      "-v", f"{config.UNMAPPED}:/work",
+                      "-v", f"{config.SCRIPTS}:/scripts:ro",
+                      AUDIT_IMAGE, "python", "/scripts/02_unmapped_pitch.py"])
+        if rc != 0:
+            print("\n!!! Подсчёт высоты голоса завершился с ошибкой")
+            sys.exit(rc)
+    run_script("01_unmapped.py", ["match"])
+
+
 def cmd_audit(args):
-    """Шаги 3-4: сверка звука оригинала с текстом. Останавливает пайплайн при неразобранных расхождениях."""
+    """Шаги 5-6: сверка звука оригинала с текстом. Останавливает пайплайн при неразобранных расхождениях."""
     if getattr(args, "no_audit", False):
         print("Сверка пропущена (--no-audit).\n")
         return
     _run_transcribe()
-    run_script("04_audit_report.py")
+    run_script("06_audit_report.py")
 
 
 def cmd_generate(args):
@@ -197,31 +223,31 @@ def cmd_generate(args):
         a += ["--chapter", str(args.chapter)]
     if args.limit:
         a += ["--limit", str(args.limit)]
-    run_script("05_generate.py", a)
+    run_script("07_generate.py", a)
 
 
 def cmd_build(_args):
-    run_script("06_build_repack_list.py")
+    run_script("08_build_repack_list.py")
 
 
 def cmd_findpck(_args):
-    run_script("07_find_pck.py")
+    run_script("09_find_pck.py")
 
 
 def cmd_wwise(args):
-    run_script("08_prepare_wwise.py", ["--gender", args.gender])
+    run_script("10_prepare_wwise.py", ["--gender", args.gender])
 
 
 def cmd_collect(args):
-    run_script("09_collect_wem.py", ["--gender", args.gender])
+    run_script("11_collect_wem.py", ["--gender", args.gender])
 
 
 def cmd_repack(args):
-    run_script("10_repack_pck.py", ["--gender", args.gender])
+    run_script("12_repack_pck.py", ["--gender", args.gender])
 
 
 def cmd_install(args):
-    ps = os.path.join(config.SCRIPTS, "11_install.ps1")
+    ps = os.path.join(config.SCRIPTS, "13_install.ps1")
     cmd = ["powershell", "-ExecutionPolicy", "Bypass", "-File", ps]
     if args.uninstall:
         cmd.append("-Uninstall")
@@ -248,7 +274,8 @@ def cmd_utils(args):
 
 
 def cmd_full(args):
-    """Шаги 1-7: map + scan + audit + generate + build + findpck"""
+    """Шаги 1-9: unmapped + map + scan + audit + generate + build + findpck"""
+    cmd_unmapped(args)
     cmd_map(args)
     cmd_scan(args)
     cmd_audit(args)
@@ -305,6 +332,7 @@ def cmd_chapter(args):
         print(f"=== Глава {args.chapter}, пол {args.gender} ===\n")
         if args.update:
             _update_submodules()
+        cmd_unmapped(args)
         cmd_map(args)
         args.all = False  # для scan/generate
         cmd_scan(args)
@@ -327,6 +355,7 @@ def cmd_chapter(args):
         print(f"=== Все главы, пол {args.gender} ===\n")
         if args.update:
             _update_submodules()
+        cmd_unmapped(args)
         cmd_map(args)
         args.all = True  # для scan/generate
         args.all_categories = False
@@ -352,6 +381,7 @@ def cmd_all(args):
     print(f"=== Весь контент (главы + побочка), пол {args.gender} ===\n")
     if args.update:
         _update_submodules()
+    cmd_unmapped(args)
     cmd_map(args)
     args.all = False
     args.all_categories = True
@@ -378,6 +408,7 @@ def cmd_extra(args):
     print(f"=== Побочный контент ({cat}), пол {args.gender} ===\n")
     if args.update:
         _update_submodules()
+    cmd_unmapped(args)
     cmd_map(args)
     if args.category:
         args.all = False
@@ -448,35 +479,38 @@ def main():
     p.set_defaults(fn=cmd_all)
 
     # === Отдельные шаги (для отладки) ===
-    sub.add_parser("map", help="шаг 1: маппинг").set_defaults(fn=cmd_map)
+    p = sub.add_parser("unmapped", help="шаги 1-2: узнать файлы из unmapped по распознанной речи")
+    p.add_argument("--no-audit", action="store_true", help="не распознавать, сопоставить по уже распознанному")
+    p.set_defaults(fn=cmd_unmapped)
+    sub.add_parser("map", help="шаг 3: маппинг").set_defaults(fn=cmd_map)
 
-    p = sub.add_parser("scan", help="шаг 2: фильтр по главам и категориям")
+    p = sub.add_parser("scan", help="шаг 4: фильтр по главам и категориям")
     add_chapter_args(p); p.set_defaults(fn=cmd_scan)
 
-    sub.add_parser("audit", help="шаги 3-4: сверка звука оригинала с текстом").set_defaults(fn=cmd_audit)
+    sub.add_parser("audit", help="шаги 5-6: сверка звука оригинала с текстом").set_defaults(fn=cmd_audit)
 
-    p = sub.add_parser("generate", help="шаг 5: генерация TTS")
+    p = sub.add_parser("generate", help="шаг 7: генерация TTS")
     add_chapter_args(p)
     p.add_argument("--limit", type=int, default=None, help="лимит задач (для теста)")
     p.set_defaults(fn=cmd_generate)
 
-    sub.add_parser("build", help="шаг 6: repack_list").set_defaults(fn=cmd_build)
-    sub.add_parser("findpck", help="шаг 7: id_to_pck").set_defaults(fn=cmd_findpck)
+    sub.add_parser("build", help="шаг 8: repack_list").set_defaults(fn=cmd_build)
+    sub.add_parser("findpck", help="шаг 9: id_to_pck").set_defaults(fn=cmd_findpck)
 
-    p = sub.add_parser("wwise", help="шаг 8: staging + wsources")
+    p = sub.add_parser("wwise", help="шаг 10: staging + wsources")
     p.add_argument("--gender", choices=["m", "f"], required=True)
     p.set_defaults(fn=cmd_wwise)
 
-    p = sub.add_parser("collect", help="шаг 9: сбор wem")
+    p = sub.add_parser("collect", help="шаг 11: сбор wem")
     p.add_argument("--gender", choices=["m", "f"], required=True)
     p.set_defaults(fn=cmd_collect)
 
-    p = sub.add_parser("repack", help="шаг 10: сборка pck")
+    p = sub.add_parser("repack", help="шаг 12: сборка pck")
     p.add_argument("--gender", choices=["m", "f"], required=True)
     p.set_defaults(fn=cmd_repack)
 
     # === Установка ===
-    p = sub.add_parser("install", help="шаг 11: установка в игру")
+    p = sub.add_parser("install", help="шаг 13: установка в игру")
     p.add_argument("--gender", choices=["m", "f"], default="m")
     p.add_argument("--uninstall", action="store_true")
     p.set_defaults(fn=cmd_install)

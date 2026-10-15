@@ -1,6 +1,6 @@
-# 11_install.ps1 — install mod. Game must be closed!
-# Usage:  .\11_install.ps1 -Gender m     (or f)
-#         .\11_install.ps1 -Uninstall    (rollback to original)
+# 13_install.ps1 — install mod. Game must be closed!
+# Usage:  .\13_install.ps1 -Gender m     (or f)
+#         .\13_install.ps1 -Uninstall    (rollback to original)
 param(
     [ValidateSet("m","f")][string]$Gender = "m",
     [switch]$Uninstall

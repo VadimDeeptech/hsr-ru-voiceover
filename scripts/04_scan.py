@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-"""02_scan.py — фильтр mapping.csv по главе(ам) и категориям -> *.csv
+"""04_scan.py — фильтр mapping.csv по главе(ам) и категориям -> *.csv
 
 Запуск:
-    python 02_scan.py --chapter 0        # только chapter0
-    python 02_scan.py --all              # все найденные главы
-    python 02_scan.py --category side0   # только side0
-    python 02_scan.py --all-categories   # все категории (chapters + sides + companions + vo + ambient + archive)
+    python 04_scan.py --chapter 0        # только chapter0
+    python 04_scan.py --all              # все найденные главы
+    python 04_scan.py --category side0   # только side0
+    python 04_scan.py --all-categories   # все категории (chapters + sides + companions + vo + ambient + archive)
 """
 import os, csv, re, argparse
 from collections import defaultdict

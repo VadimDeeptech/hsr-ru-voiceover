@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-03_audit_transcribe.py — распознаёт английскую речь в оригинальных wav (Whisper) -> asr.csv.
-Нужен для сверки «что звучит» с «что написано в субтитре» (см. 04_audit_report.py).
+05_audit_transcribe.py — распознаёт английскую речь в оригинальных wav (Whisper) -> asr.csv.
+Нужен для сверки «что звучит» с «что написано в субтитре» (см. 06_audit_report.py).
 - работает ВНУТРИ образа CosyVoice: там уже есть torch + whisper и доступ к GPU
 - резюмируемый: уже распознанные файлы пропускаются, после обновления игры
   распознаются только новые
@@ -14,7 +14,7 @@
       -v "${PWD}\\hsr-dataset:/data:ro" -v "${PWD}\\hsr-run-voice:/work:ro" `
       -v "${PWD}\\hsr-generate\\audit\\asr:/asr" -v "${PWD}\\scripts:/scripts:ro" `
       -v "${PWD}\\hsr-generate\\whisper_cache:/root/.cache/whisper" `
-      hsr-cosyvoice-cosyvoice python /scripts/03_audit_transcribe.py --shard "$_/3" }
+      hsr-cosyvoice-cosyvoice python /scripts/05_audit_transcribe.py --shard "$_/3" }
     docker logs -f hsr-audit-0
 Результат: hsr-generate\\audit\\asr\\asr_*.csv
 """
@@ -40,7 +40,8 @@ for p in glob.glob(os.path.join(args.out_dir, "asr_*.csv")):
         done |= {r["file"] for r in csv.DictReader(f, delimiter=";")}
 
 with open(args.mapping, encoding="utf-8-sig", newline="") as f:
-    todo = [r["file"] for i, r in enumerate(csv.DictReader(f, delimiter=";"))
+    # src — настоящий файл, если он лежит не по пути file (записи из unmapped, см. 01_unmapped.py)
+    todo = [(r["file"], r.get("src") or r["file"]) for i, r in enumerate(csv.DictReader(f, delimiter=";"))
             if i % nshards == shard and r["file"] not in done]
 if args.limit:
     todo = todo[:args.limit]
@@ -55,8 +56,8 @@ with open(out_path, "a", encoding="utf-8-sig", newline="") as f:
     wr = csv.writer(f, delimiter=";")
     if new:
         wr.writerow(["file", "heard", "no_speech", "note"])
-    for i, rel in enumerate(todo, 1):
-        src = os.path.join(args.dataset, rel.replace("\\", "/"))
+    for i, (rel, src_rel) in enumerate(todo, 1):
+        src = os.path.join(args.dataset, src_rel.replace("\\", "/"))
         try:
             res = model.transcribe(src, language="en", fp16=True)
             segs = res["segments"]

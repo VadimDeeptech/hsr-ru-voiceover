@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""01_mapper.py — маппинг wav -> VoiceID -> текст. Результат: mapping.csv
+"""03_mapper.py — маппинг wav -> VoiceID -> текст. Результат: mapping.csv
 v3: гендерные суффиксы _m/_f (IsPlayerInvolved: true в VoiceConfig).
     VoiceConfig хранит БАЗОВЫЙ VoicePath (chapter0_2_mar7th_141),
     а файлы на диске сплитятся на *_m.wav / *_f.wav.
@@ -115,6 +115,53 @@ for e in tsmv:
             tsmv_map[vid] = sent_hash[tsid]
 print(f"  TalkSentenceMultiVoice: {len(tsmv_map)} записей")
 
+def add_row(rel, stem, voiceid, vtype, gender, src=""):
+    """Строка mapping.csv: текст по VoiceID. src — настоящий файл, если rel виртуальный (unmapped)."""
+    parts = rel.split(os.sep)
+    char = ""
+    if len(parts) >= 4 and parts[1].lower() == "voice" and parts[2].lower() == "archive":
+        char = parts[3]
+    else:
+        m = char_re.match(stem)
+        if m: char = m.group(1)
+
+    (sid, source), avatar = sentence_id(voiceid), ""
+    h = sent_hash[sid] if sid is not None else None
+    if not h and voiceid in atlas:
+        (avatar, h), source = atlas[voiceid], "atlas"
+    if not h and voiceid in atlas_by_audioid:
+        (avatar, h), source = atlas_by_audioid[voiceid], "atlas_audio"
+    if not h and voiceid in extra_hash:
+        h, source = extra_hash[voiceid], "extra"
+    if not h and voiceid in tsmv_map:
+        h, source = tsmv_map[voiceid], "multivoice"
+    if not h and voiceid in sent_hash:
+        # явных ссылок нет: строка с тем же номером (старые данные без поля VoiceID).
+        # Только после других таблиц: номер может случайно совпасть с чужой строкой (гонки B51)
+        sid, source = voiceid, "sentence_samenum"
+        h = sent_hash[sid]
+    text_ru = textmap.get(h) if h else None
+    text_en = textmap_en.get(h) if h else None
+
+    dec = decisions.find(DECISIONS, stem)
+    if dec and dec[0] in ("join", "next") and sid is not None:
+        # ручное решение: текст записи продолжается в следующих строках субтитров
+        more = following(sid, dec[1])
+        if len(more) < dec[1]:
+            print(f"  !! {stem}: в решении {dec[1]} строк продолжения, найдено {len(more)}")
+        own = [] if dec[0] == "next" else [h]
+        text_ru = " ".join(textmap.get(x) or "" for x in own + more)
+        text_en = " ".join(textmap_en.get(x) or "" for x in own + more)
+        stats["joined"] += 1
+
+    if text_ru:
+        stats["with_ru_text"] += 1
+        stats["unsure_source"] += source in decisions.UNSURE_SOURCES
+    else: stats["no_text"] += 1
+
+    rows.append([rel, stem, voiceid, vtype, char, avatar, gender,
+                 (text_ru or "").replace("\r", " "), (text_en or "").replace("\r", " "), source, src])
+
 print("Сканирую wav-файлы...")
 rows, stats = [], Counter()
 char_re = re.compile(r"^(?:chapter\w*|side\w*|vo)_\w*?_([a-z][a-z0-9]+?)_\d+", re.I)
@@ -128,6 +175,7 @@ for dp, dn, fn in os.walk(DS):
         stem  = os.path.splitext(f)[0].lower()
         parts = rel.split(os.sep)
         if len(parts) > 1 and parts[1].lower() == "unmapped":
+            # имени нет в карте AnimeWwise; часть узнаётся по речи — см. ниже и 01_unmapped.py
             stats["unmapped_skip"] += 1
             continue
 
@@ -142,61 +190,34 @@ for dp, dn, fn in os.walk(DS):
         if not hit:
             stats["no_voiceconfig"] += 1
             continue
-        voiceid, vtype = hit
         stats["matched"] += 1
+        add_row(rel, stem, *hit, gender)
 
-        char = ""
-        if len(parts) >= 4 and parts[1].lower() == "voice" and parts[2].lower() == "archive":
-            char = parts[3]
-        else:
-            m = char_re.match(stem)
-            if m: char = m.group(1)
-
-        (sid, source), avatar = sentence_id(voiceid), ""
-        h = sent_hash[sid] if sid is not None else None
-        if not h and voiceid in atlas:
-            (avatar, h), source = atlas[voiceid], "atlas"
-        if not h and voiceid in atlas_by_audioid:
-            (avatar, h), source = atlas_by_audioid[voiceid], "atlas_audio"
-        if not h and voiceid in extra_hash:
-            h, source = extra_hash[voiceid], "extra"
-        if not h and voiceid in tsmv_map:
-            h, source = tsmv_map[voiceid], "multivoice"
-        if not h and voiceid in sent_hash:
-            # явных ссылок нет: строка с тем же номером (старые данные без поля VoiceID).
-            # Только после других таблиц: номер может случайно совпасть с чужой строкой (гонки B51)
-            sid, source = voiceid, "sentence_samenum"
-            h = sent_hash[sid]
-        text_ru = textmap.get(h) if h else None
-        text_en = textmap_en.get(h) if h else None
-
-        dec = decisions.find(DECISIONS, stem)
-        if dec and dec[0] in ("join", "next") and sid is not None:
-            # ручное решение: текст записи продолжается в следующих строках субтитров
-            more = following(sid, dec[1])
-            if len(more) < dec[1]:
-                print(f"  !! {stem}: в решении {dec[1]} строк продолжения, найдено {len(more)}")
-            own = [] if dec[0] == "next" else [h]
-            text_ru = " ".join(textmap.get(x) or "" for x in own + more)
-            text_en = " ".join(textmap_en.get(x) or "" for x in own + more)
-            stats["joined"] += 1
-
-        if text_ru:
-            stats["with_ru_text"] += 1
-            stats["unsure_source"] += source in decisions.UNSURE_SOURCES
-        else: stats["no_text"] += 1
-
-        rows.append([rel, stem, voiceid, vtype, char, avatar, gender,
-                     (text_ru or "").replace("\r", " "), (text_en or "").replace("\r", " "), source])
+# файлы из unmapped, узнанные по речи (01_unmapped.py): file — виртуальный путь
+# с настоящим VoicePath, src — сам файл. Если у записи уже есть свой файл (обновили
+# карту/датасет), берём его.
+match_csv = os.path.join(config.UNMAPPED, "match.csv")
+if os.path.exists(match_csv):
+    known = {r[1] for r in rows}
+    with open(match_csv, encoding="utf-8-sig", newline="") as f:
+        for r in csv.DictReader(f, delimiter=";"):
+            stem = r["stem"].lower()
+            if r["status"] != "new" or stem in known: continue
+            gender = stem[-1] if r["voicepath"].lower() != stem else ""
+            hit = voice_by_path.get(r["voicepath"].lower())
+            if not hit: continue
+            stats["unmapped_recovered"] += 1
+            known.add(stem)
+            add_row(r["file"], stem, *hit, gender, src=r["src"])
 
 csv_path = os.path.join(OUT, "mapping.csv")
 with open(csv_path, "w", encoding="utf-8-sig", newline="") as f:
     wr = csv.writer(f, delimiter=";")
-    wr.writerow(["file", "voicepath", "voiceid", "voicetype", "character", "avatarid", "gender", "text_ru", "text_en", "text_source"])
+    wr.writerow(["file", "voicepath", "voiceid", "voicetype", "character", "avatarid", "gender", "text_ru", "text_en", "text_source", "src"])
     wr.writerows(rows)
 
 print(f"\nГотово: {csv_path}")
-print(f"Всего wav: {stats['wav_total']} | unmapped: {stats['unmapped_skip']} | нет в VoiceConfig: {stats['no_voiceconfig']}")
+print(f"Всего wav: {stats['wav_total']} | unmapped: {stats['unmapped_skip']} (узнано по речи: {stats['unmapped_recovered']}) | нет в VoiceConfig: {stats['no_voiceconfig']}")
 print(f"Текст взят по полю VoiceID другой строки: {stats['text_by_voice_field']} | "
       f"склеено по audit_decisions.csv: {stats['joined']}")
 print(f"Совпало: {stats['matched']} (из них по _m/_f-суффиксу: {stats['matched_gender_suffix']}) | с RU-текстом: {stats['with_ru_text']} | без текста: {stats['no_text']}")

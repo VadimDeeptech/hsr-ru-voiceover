@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-05_generate.py — генерация RU-озвучки через CosyVoice (cross_lingual, :8020).
+07_generate.py — генерация RU-озвучки через CosyVoice (cross_lingual, :8020).
 - разметка: {RUBY_B#аннотация}текст{RUBY_E#} -> только текст; {F#}/{M#} -> по полу;
   {NICKNAME}/{TEXTJOIN#54} -> имя; <color>/<unbreak>/<size>/<i> -> выкидываем
 - гендерные строки (теги в тексте) -> пара файлов <name>__m.wav и <name>__f.wav
@@ -11,11 +11,11 @@
   (тексты озвученного — в gen_text.csv рядом с wav)
 
 Запуск:
-    python 05_generate.py --chapter 0        # только chapter0
-    python 05_generate.py --all              # все найденные главы
-    python 05_generate.py --category side0   # только side0
-    python 05_generate.py --all-categories   # все категории
-    python 05_generate.py --all --limit 20   # тестовый прогон
+    python 07_generate.py --chapter 0        # только chapter0
+    python 07_generate.py --all              # все найденные главы
+    python 07_generate.py --category side0   # только side0
+    python 07_generate.py --all-categories   # все категории
+    python 07_generate.py --all --limit 20   # тестовый прогон
 """
 import os, io, csv, re, time, wave, struct, hashlib, subprocess, argparse
 import requests
@@ -217,7 +217,8 @@ def generate_chapter(csv_name, out_name, limit=None):
                         tw.writerow([out_name_wav, h])
                     skip += 1; continue
                 stale = True
-            src = os.path.join(config.DATASET, r["file"])
+            # src — настоящий файл записи из unmapped (file у неё виртуальный, см. 01_unmapped.py)
+            src = os.path.join(config.DATASET, r.get("src") or r["file"])
             orig = wav_duration(src)
             if orig and orig > MAX_REF_SEC and len(text) / orig < SCENE_MIN_CPS:
                 # длинная сцена, к которой в данных игры привязана одна строка субтитра:

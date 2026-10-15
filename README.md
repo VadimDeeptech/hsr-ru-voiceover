@@ -136,17 +136,18 @@ python pipeline.py install --gender m
 ### Отдельные шаги (отладка)
 
 ```bash
-python pipeline.py map                                # 1. wav -> mapping.csv
-python pipeline.py scan --all-categories              # 2. фильтр по всем категориям
+python pipeline.py unmapped                           # 1-2. узнать файлы из unmapped по речи
+python pipeline.py map                                # 3. wav -> mapping.csv
+python pipeline.py scan --all-categories              # 4. фильтр по всем категориям
 python pipeline.py scan --category side0              #    ...или по одной
-python pipeline.py audit                              # 3-4. сверка звука оригинала с текстом
-python pipeline.py generate --all-categories          # 5. TTS для всех категорий
+python pipeline.py audit                              # 5-6. сверка звука оригинала с текстом
+python pipeline.py generate --all-categories          # 7. TTS для всех категорий
 python pipeline.py generate --category vo --limit 50  #    ...тест на 50 репликах vo
-python pipeline.py build                              # 6. repack_list.csv
-python pipeline.py findpck                            # 7. id_to_pck.csv
-python pipeline.py wwise --gender m                   # 8. staging + wsources
-python pipeline.py collect --gender m                 # 9. сбор wem
-python pipeline.py repack --gender m                  # 10. сборка pck
+python pipeline.py build                              # 8. repack_list.csv
+python pipeline.py findpck                            # 9. id_to_pck.csv
+python pipeline.py wwise --gender m                   # 10. staging + wsources
+python pipeline.py collect --gender m                 # 11. сбор wem
+python pipeline.py repack --gender m                  # 12. сборка pck
 ```
 
 > WwiseConsole запускается автоматически. Чтобы пропустить (например, Wwise GUI открыт): `--no-wwise`.
@@ -179,8 +180,20 @@ python pipeline.py repack --gender m                  # 10. сборка pck
 
 У части записей (в основном фоновые приветствия NPC, `vo_ambient_*`) связь звука с субтитром в данных игры ненадёжна: звучит короткая фраза, а строка диалога другая. Источник текста каждой записи пишется в колонку `text_source` файла `mapping.csv`. Записи из ненадёжных источников (`sentence_other`, `sentence_samenum`, `multivoice`) озвучиваются, только если распознавание подтвердило текст; остальные автоматически остаются с оригинальным звуком и попадают в `hsr-generate\audit\audit_auto.csv`. Чтобы всё же озвучить такую запись, впиши для неё `accept` в `audit_decisions.csv`.
 
-> Пропустить сверку: `--no-audit` (автоматические решения берутся из прошлой сверки). Только отчёт без остановки: `python scripts\04_audit_report.py --no-gate`.
+> Пропустить сверку: `--no-audit` (автоматические решения берутся из прошлой сверки). Только отчёт без остановки: `python scripts\06_audit_report.py --no-gate`.
 > Во время сверки видеопамять занята распознаванием — CosyVoice-генерацию параллельно не запускать.
+
+### Файлы без имени (unmapped)
+
+AnimeWwise кладёт в `<pck>\unmapped\` файлы, которых нет в его карте. Имя такого файла — хэш пути, он же wem_id в pck; сам путь из хэша не восстановить. Полные циклы начинаются с шага `unmapped` (`scripts\01_unmapped.py`): Whisper распознаёт речь, а распознанное сравнивается с английскими субтитрами записей VoiceConfig.
+
+- Запись без своего файла (новые квесты, которых ещё нет в карте) попадает в `mapping.csv` под виртуальным путём `<pck>\voice\...\<voicepath>.wav`. Настоящий файл записан в колонке `src`: из него берётся образец голоса, а его имя служит wem_id.
+- Копия строки, файл которой уже есть: в сборку идёт та же озвучка и под этим wem_id.
+- В `External_del_*.pck` файлы лежат по алфавиту имени, поэтому там помогает и порядок: файлы между двумя известными соседями — записи, лежащие между ними по алфавиту. Так различаются повторяющиеся реплики и варианты `_m`/`_f` с одинаковым текстом (`_f` всегда раньше `_m`). Если файлов в промежутке столько же, сколько записей, сопоставление однозначно и принимается, даже когда английская запись расходится с субтитром.
+- Сомнительные совпадения пропускаются: похожесть ниже 0,9 (для копий — 0,95), несколько записей с тем же текстом, не различить варианты `_m`/`_f`.
+- `VoBanks*.pck` не берутся: там звук внутри саундбанков, а сборка меняет только externals pck.
+
+Итог по каждому файлу — `hsr-generate\audit\unmapped\match.csv` (колонка `status`), распознавание кэшируется там же. С `--no-audit` сопоставление идёт по уже распознанному.
 
 ### Утилиты
 
@@ -205,7 +218,7 @@ git submodule update --remote
 # 4. Диагностика: появились ли новые таблицы с текстом?
 python pipeline.py utils find-missing-text
 
-# 5. Если скрипт нашёл новые таблицы — добавь их в 01_mapper.py (строки load_extra)
+# 5. Если скрипт нашёл новые таблицы — добавь их в 03_mapper.py (строки load_extra)
 
 # 6. Полный цикл и установка
 python pipeline.py all --gender m

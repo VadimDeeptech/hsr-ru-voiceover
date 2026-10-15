@@ -98,7 +98,7 @@ for fname, overlaps, hash_col, sample in sorted(results, key=lambda x: -x[1]):
     print(f"{fname:<40} {overlaps:>10} {hash_col or '':<20} {sample:>10}")
 
 print("\nРекомендация:")
-print("Добавь в 01_mapper.py строки вида:")
+print("Добавь в 03_mapper.py строки вида:")
 for fname, overlaps, hash_col, _ in results:
     if overlaps > 10 and hash_col:
         if fname == "TalkSentenceMultiVoice.json":

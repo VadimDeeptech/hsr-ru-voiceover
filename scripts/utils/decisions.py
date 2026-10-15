@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 decisions.py — чтение audit_decisions.csv: ручные решения по записям, у которых звук
-оригинала расходится с текстом (их находит 04_audit_report.py).
+оригинала расходится с текстом (их находит 06_audit_report.py).
 
 Формат (разделитель ;): voicepath;action;lines;comment
     voicepath — как в mapping.csv (имя файла без .wav, нижний регистр);
@@ -12,7 +12,7 @@ decisions.py — чтение audit_decisions.csv: ручные решения �
         next   — своя строка — ремарка: берём только следующие `lines` строк
         keep   — не озвучиваем, в игре остаётся оригинал
 
-Кроме ручных решений есть автоматические (hsr-generate\\audit\\audit_auto.csv, пишет 04_audit_report.py):
+Кроме ручных решений есть автоматические (hsr-generate\\audit\\audit_auto.csv, пишет 06_audit_report.py):
 keep для записей, чей текст взят из ненадёжного источника (UNSURE_SOURCES) и не подтверждён
 распознаванием. Ручное решение всегда важнее автоматического.
 """
@@ -25,7 +25,7 @@ PATH      = os.path.join(config.ROOT, "audit_decisions.csv")
 AUTO_PATH = os.path.join(config.AUDIT, "audit_auto.csv")
 ACTIONS   = ("accept", "join", "next", "keep")
 
-# Источники текста (колонка text_source в mapping.csv, см. 01_mapper.py), где субтитр часто
+# Источники текста (колонка text_source в mapping.csv, см. 03_mapper.py), где субтитр часто
 # не совпадает со звуком: фоновые приветствия NPC звучат короткой фразой, а строка диалога другая.
 # Такие записи озвучиваются, только если распознавание подтвердило текст (или есть ручное решение).
 UNSURE_SOURCES = ("sentence_other", "sentence_samenum", "multivoice")

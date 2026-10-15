@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-04_audit_report.py — сверка «что звучит в оригинале» (hsr-generate\\audit\\asr\\asr_*.csv)
+06_audit_report.py — сверка «что звучит в оригинале» (hsr-generate\\audit\\asr\\asr_*.csv)
 с английским субтитром (mapping.csv). Ничего не исправляет: пишет hsr-generate\\audit\\audit_report.csv
 и останавливает пайплайн,
 если есть неразобранные расхождения.
@@ -24,7 +24,7 @@
 Автоматические keep пишутся в audit_auto.csv. «Звука больше» разбирается вручную:
 остальные — «НЕ РАЗОБРАНО», код возврата 2, генерация не начинается.
 
-Запуск: python 04_audit_report.py            (после 03_audit_transcribe.py; можно во время прогона)
+Запуск: python 06_audit_report.py            (после 05_audit_transcribe.py; можно во время прогона)
 """
 import os, csv, re, sys, glob, difflib, argparse
 from collections import Counter

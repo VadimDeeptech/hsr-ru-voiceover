@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-10_repack_pck.py — сборка мода под GENDER -> pck_out_<GENDER>\.
+12_repack_pck.py — сборка мода под GENDER -> pck_out_<GENDER>\.
 База для каждого pck = pck_backup_en, пока в игре стоит наш мод (по манифесту installed.csv),
 иначе папка игры: там оригинал — мод не ставился либо игра заменила файл при обновлении.
 Патч: wem дописывается в конец pck (выравнивание 16), в записи обновляются size/offset.
 
-Запуск: python 10_repack_pck.py --gender m|f
+Запуск: python 12_repack_pck.py --gender m|f
 """
 import os, csv, struct, argparse, sys
 
@@ -23,7 +23,7 @@ REPACK = config.REPACK
 WEMDIR = os.path.join(REPACK, GENDER)
 OUTDIR = os.path.join(config.RUN, f"pck_out_{GENDER}")
 
-# манифест установки (пишет 11_install.ps1): какие файлы в игре положили мы сами
+# манифест установки (пишет 13_install.ps1): какие файлы в игре положили мы сами
 installed = {}
 if os.path.isfile(os.path.join(BACKUP, "installed.csv")):
     with open(os.path.join(BACKUP, "installed.csv"), encoding="utf-8-sig", newline="") as f:

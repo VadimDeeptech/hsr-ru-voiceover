@@ -28,6 +28,7 @@ PCK_BACKUP = os.path.join(RUN, "pck_backup_en")
 GEN           = os.path.join(ROOT, "hsr-generate")
 AUDIT         = os.path.join(GEN, "audit")          # audit_report.csv, audit_auto.csv
 ASR           = os.path.join(AUDIT, "asr")          # asr_*.csv — результаты Whisper
+UNMAPPED      = os.path.join(AUDIT, "unmapped")     # распознавание и сопоставление файлов без имени (01_unmapped.py)
 OUTPUT_RU     = os.path.join(GEN, "output_ru")      # <категория>\*.wav, gen_report.csv, gen_text.csv
 WHISPER_CACHE = os.path.join(GEN, "whisper_cache")  # модель Whisper
 
@@ -113,14 +114,14 @@ COSYVOICE_URL = _cosyvoice_url
 AUDIT_RUNNERS = _audit_runners
 
 def category_csvs():
-    """Имена csv категорий в hsr-run-voice (результат 02_scan.py): все csv, кроме mapping.csv."""
+    """Имена csv категорий в hsr-run-voice (результат 04_scan.py): все csv, кроме mapping.csv."""
     return sorted(f for f in os.listdir(RUN)
                   if f.lower().endswith(".csv") and f.lower() != "mapping.csv"
                   and os.path.isfile(os.path.join(RUN, f)))
 
 def ensure_dirs():
     """Создаёт рабочие папки, если их нет."""
-    for d in (RUN, REPACK, PCK_BACKUP, LOGS, GEN, ASR, OUTPUT_RU, WHISPER_CACHE):
+    for d in (RUN, REPACK, PCK_BACKUP, LOGS, GEN, ASR, UNMAPPED, OUTPUT_RU, WHISPER_CACHE):
         os.makedirs(d, exist_ok=True)
 
 def check_env():
