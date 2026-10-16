@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Скачивает модель Fun-CosyVoice3-0.5B с HuggingFace в указанную директорию.
+"""Скачивает модель Fun-CosyVoice3-0.5B-2512 с HuggingFace в указанную директорию.
 
 Использование:
     python download_model.py [target_dir]
@@ -10,7 +10,8 @@ import sys
 
 from huggingface_hub import snapshot_download
 
-MODEL_ID = "FunAudioLLM/Fun-CosyVoice3-0.5B"
+MODEL_ID = "FunAudioLLM/Fun-CosyVoice3-0.5B-2512"
+# локальная папка — без -2512: на неё ссылается MODEL_DIR в .env
 TARGET_DIR = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "models", "Fun-CosyVoice3-0.5B"
 )

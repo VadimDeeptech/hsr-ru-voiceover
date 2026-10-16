@@ -122,6 +122,8 @@ for p in PCKS:
     built = os.path.join(pck_out, p)
     if not (os.path.isfile(src) and os.path.isfile(built)):
         sys.exit(f"нет {src} или {built}")
+    if read(src) == read(built):
+        sys.exit(f"в игре стоит мод ({p} = pck_out_m): тесту нужен оригинал — удалите мод установщиком")
     if os.path.getmtime(built) < os.path.getmtime(src):
         sys.exit(f"{built} собран раньше, чем игра обновила {p}: эталон устарел")
     shutil.copy2(src, os.path.join(ORIG, p))

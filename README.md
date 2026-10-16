@@ -110,7 +110,7 @@ cd hsr-cosyvoice
 python download_model.py
 ```
 
-Скрипт скачает `FunAudioLLM/Fun-CosyVoice3-0.5B` с HuggingFace в `hsr-cosyvoice\models\Fun-CosyVoice3-0.5B`.
+Скрипт скачает `FunAudioLLM/Fun-CosyVoice3-0.5B-2512` с HuggingFace в `hsr-cosyvoice\models\Fun-CosyVoice3-0.5B`.
 
 #### 6.2 Запуск
 
@@ -290,8 +290,10 @@ python pipeline.py install --uninstall
 `install` копирует в игру полные pck из `pck_out_<пол>` — в них вся английская озвучка игры, поэтому для публикации они не годятся. Для игроков собирается пакет только с нашими wem и установщиком, который патчит pck в игре самого игрока.
 
 ```bash
-python pipeline.py wwise --gender m && python pipeline.py collect --gender m
-python pipeline.py wwise --gender f && python pipeline.py collect --gender f
+python pipeline.py wwise --gender m
+python pipeline.py collect --gender m
+python pipeline.py wwise --gender f
+python pipeline.py collect --gender f
 python pipeline.py package --zip
 ```
 
