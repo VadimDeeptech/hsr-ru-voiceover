@@ -36,3 +36,4 @@ chapter5_66_evanescia_113;accept;;заикание: Whisper растянул «t
 chapter5_64_ashveil_113;accept;;unmapped по порядку: Whisper слышит «Von Woch» = Vonwacq (так же в ashveil_102), между ashveil_111 и _114
 chapter5_65_youling_101;accept;;unmapped по порядку: Whisper слышит «White House» = Lighthouse, между yabuli_109 и youling_102
 vo_ambient_w5_v470_talk_sampo_102;keep;;субтитр в дампе 4.7 усечён («As part of the deal...»), полной фразы нет в TextMap; вернуться после обновления дампа
+chapter5_75_guiji_101;accept;;текст совпадает с речью, лишнее в озвучке — только смех «Ha ha ha…» (4 слова в субтитре против 11 услышанных)

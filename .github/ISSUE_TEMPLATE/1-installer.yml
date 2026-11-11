@@ -11,8 +11,8 @@ body:
     id: mod-version
     attributes:
       label: Версия мода
-      description: Из имени архива, например HSR-RU-Voiceover-1.1.0
-      placeholder: "1.1.0"
+      description: Из имени архива, например HSR-RU-Voiceover-1.1.1
+      placeholder: "1.1.1"
     validations:
       required: true
   - type: input
