@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
 """
 01_unmapped.py — возвращает в пайплайн файлы из папок unmapped (AnimeWwise не знает их имён).
-Имя такого файла — 64-битный хэш пути (он же wem_id английского варианта в pck), а сам путь
-из хэша не восстановить. Поэтому сверяем звук с текстом: Whisper распознаёт речь
-(05_audit_transcribe.py), а распознанное сравнивается с английскими субтитрами записей VoiceConfig.
+Имя такого файла — 64-битный хэш пути (он же wem_id английского варианта в pck). Обратно путь
+из хэша не восстановить, но хэш каждого VoicePath из VoiceConfig посчитать можно (hash_pass):
+так узнаются все записи нового патча, которых ещё нет в карте AnimeWwise, — точно, без речи.
+Остальные файлы (имён которых нет и в таблицах геймдаты) сверяем звук с текстом: Whisper
+распознаёт речь (05_audit_transcribe.py), а распознанное сравнивается с английскими
+субтитрами записей VoiceConfig.
 
     python 01_unmapped.py list    -> hsr-generate\\audit\\unmapped\\list.csv (что распознавать)
     python 01_unmapped.py match   -> hsr-generate\\audit\\unmapped\\match.csv (итог по каждому файлу)
@@ -13,7 +16,8 @@
 
 В pck External_del_* файлы лежат по алфавиту имени, поэтому там сопоставление по тексту
 дополняется порядком (order_pass): файлы между известными соседями — это записи, лежащие между
-ними по алфавиту. Колонка method: text — по тексту, order — по порядку в pck.
+ними по алфавиту. Колонка method: hash — по хэшу VoicePath (точно, score 1.000),
+text — по тексту, order — по порядку в pck.
 
 Статусы в match.csv:
     new       — запись VoiceConfig, у которой нет файла: 03_mapper.py добавит её в mapping.csv
@@ -56,6 +60,32 @@ ORDER_LOOSE = 0.50 # ...когда не поровну (часть файлов 
 def is_unmapped(rel):
     parts = rel.split(os.sep)
     return len(parts) > 2 and parts[1].lower() == "unmapped" and not parts[0].lower().startswith("vobanks")
+
+def wem_hash(name):
+    """wem_id файла в english-pck: FNV-1 64 от «english/voice/<имя>.wem» в нижнем регистре
+    (так карты AnimeWwise строит WwiseMapper, src/map.zig). Папки в строку не входят."""
+    h = 0xcbf29ce484222325
+    for c in ("english/voice/" + name + ".wem").lower().encode():
+        h = (h * 0x100000001b3) & 0xFFFFFFFFFFFFFFFF
+        h ^= c
+    return f"{h:016x}"
+
+def hash_pass(current):
+    """Файлы unmapped, имя которых считается прямым хэшем от VoicePath из VoiceConfig
+    (суффиксы '', _f, _m): src -> (stem, voicepath). Обратно из хэша путь не восстановить,
+    зато хэш каждого пути из геймдаты посчитать можно — это ровно то, что делает карта AnimeWwise
+    для нового патча, только без ожидания её выхода."""
+    idx = {}
+    for e in load(os.path.join(config.GAMEDATA, "ExcelOutput", "VoiceConfig.json")):
+        vp = e.get("VoicePath")
+        if not vp: continue
+        for suf in ("", "_f", "_m"):
+            idx.setdefault(wem_hash(vp + suf), (vp + suf, vp))
+    found = {}
+    for src in sorted(current):
+        hit = idx.get(os.path.splitext(os.path.basename(src))[0].lower())
+        if hit: found[src] = hit
+    return found
 
 def cmd_list():
     files = []
@@ -150,7 +180,7 @@ def align(files, stems, sim):
         else: j += 1
     return pairs
 
-def order_pass(results, pool, have, dirs):
+def order_pass(results, pool, have, dirs, hashed=None):
     """В pck External_del_* файлы лежат по алфавиту имени (проверено на известных pck:
     1049 из 1050 соседних пар). Файлы между двумя известными соседями — это записи без файла,
     лежащие между ними по алфавиту. Так различаются и повторяющиеся реплики, и _m/_f
@@ -160,7 +190,8 @@ def order_pass(results, pool, have, dirs):
     by_pck = defaultdict(dict)
     for r in results:
         pck = r["src"].split(os.sep)[0]
-        if pck.lower().startswith("external_del"):
+        # узнанные по хэшу — точные: их порядок не пересматриваем, они служат якорями (known ниже)
+        if pck.lower().startswith("external_del") and r.get("method") != "hash":
             by_pck[pck][os.path.splitext(os.path.basename(r["src"]))[0].lower()] = r
     if not by_pck: return
 
@@ -173,6 +204,8 @@ def order_pass(results, pool, have, dirs):
         if lang == en:
             p = m.get_key(h)
             if p: known[h] = os.path.basename(p[0]).lower()
+    for src, (stem, _) in (hashed or {}).items():
+        known[os.path.splitext(os.path.basename(src))[0].lower()] = stem.lower()
 
     # все имена файлов по VoiceConfig; у IsPlayerInvolved — _f и _m
     stem_vp, stem_text, has_file = {}, defaultdict(list), set()
@@ -280,6 +313,19 @@ def cmd_match():
             have[re.sub(r"_[mf]$", "", stem.lower())].append(stem)
             dirs.setdefault(re.sub(r"_\d+(?:_[mf])?$", "", stem.lower()), os.path.join(*parts[1:-1]))
 
+    # только файлы текущей выгрузки (list.csv): в кэше остаются и файлы, которых в датасете
+    # уже нет (pck убран обновлением игры, AnimeWwise узнал имя)
+    with open(LIST, encoding="utf-8-sig", newline="") as f:
+        current = {r["file"] for r in csv.DictReader(f, delimiter=";")}
+
+    # файлы, имя которых считается хэшем от VoicePath: точное сопоставление без распознавания речи.
+    # Их stem'ы считаются уже имеющими файл — текстовое сопоставление не должно занять их повторно
+    hashed = hash_pass(current)
+    for src, (stem, _) in hashed.items():
+        key = re.sub(r"_[mf]$", "", stem.lower())
+        if stem not in have[key]: have[key].append(stem)
+    print(f"Узнано по хэшу VoicePath: {len(hashed)} из {len(current)}")
+
     # кандидаты: (voicepath, есть ли файл, [(имя файла, нормализованный текст)], русский текст одинаков для _m/_f)
     pool, seen = [], set()
     for e in load(os.path.join(config.GAMEDATA, "ExcelOutput", "VoiceConfig.json")):
@@ -304,10 +350,6 @@ def cmd_match():
             for w in n.split():
                 if len(w) > 3: index[w].add(i)
 
-    # только файлы текущей выгрузки (list.csv): в кэше остаются и файлы, которых в датасете
-    # уже нет (pck убран обновлением игры, AnimeWwise узнал имя)
-    with open(LIST, encoding="utf-8-sig", newline="") as f:
-        current = {r["file"] for r in csv.DictReader(f, delimiter=";")}
     asr = {}
     for p in glob.glob(os.path.join(config.UNMAPPED, "asr_*.csv")):
         with open(p, encoding="utf-8-sig", newline="") as f:
@@ -327,6 +369,7 @@ def cmd_match():
         row = {"src": src, "file": "", "stem": "", "voicepath": "", "status": "", "score": "",
                "heard": a["heard"], "text_en": ""}
         results.append(row)
+        if src in hashed: continue   # заполняется ниже, по хэшу
         if not heard:
             row["status"] = "nospeech"; continue
         cand = Counter()
@@ -362,6 +405,26 @@ def cmd_match():
         if not ok:
             row["status"] = "low"; continue
         pending.append((row, options))
+
+    # 1б. узнанные по хэшу (в том числе без распознанной речи, если он пропущен --no-audit)
+    seen = {r["src"] for r in results}
+    for src in sorted(hashed):
+        if src not in seen:
+            results.append({"src": src, "file": "", "stem": "", "voicepath": "", "status": "", "score": "",
+                            "heard": "", "text_en": ""})
+    by_stem = defaultdict(list)
+    for r in results:
+        if r["src"] in hashed: by_stem[hashed[r["src"]][0].lower()].append(r)
+    for rs in by_stem.values():
+        # на запись — один файл: del-pck первым, как и в сопоставлении по порядку; остальные — копии
+        rs.sort(key=lambda r: (not r["src"].lower().startswith("external_del"), r["src"]))
+        for n, r in enumerate(rs):
+            stem, vp = hashed[r["src"]]
+            r.update(stem=stem, voicepath=vp, score="1.000", method="hash")
+            if n == 0:
+                r.update(status="new", file=virtual_path(r["src"], stem, dirs))
+            else:
+                r.update(status="alias" if r["src"].split(os.sep)[0] != rs[0]["src"].split(os.sep)[0] else "dup")
 
     # 2. файл -> запись: сначала однозначные и лучшие совпадения; у записи без файла
     #    мест столько, сколько у неё вариантов (_m/_f)
@@ -427,7 +490,7 @@ def cmd_match():
 
     for r in results:
         r.setdefault("method", "text" if r["status"] in ("new", "alias") else "")
-    order_pass(results, pool, have, dirs)
+    order_pass(results, pool, have, dirs, hashed)
 
     with open(MATCH, "w", encoding="utf-8-sig", newline="") as f:
         wr = csv.DictWriter(f, list(results[0].keys()) if results else ["src"], delimiter=";")
@@ -437,7 +500,7 @@ def cmd_match():
         wr = csv.writer(f, delimiter=";")
         wr.writerow(["file", "heard", "no_speech", "note"])
         for r in results:
-            if r["status"] == "new":
+            if r["status"] == "new" and r["src"] in asr:
                 a = asr[r["src"]]
                 wr.writerow([r["file"], a["heard"], a["no_speech"], a["note"]])
 

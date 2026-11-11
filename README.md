@@ -2,7 +2,7 @@
 
 [![Скачать на Playground](https://img.shields.io/badge/%D1%81%D0%BA%D0%B0%D1%87%D0%B0%D1%82%D1%8C-Playground-2ea44f)](https://www.playground.ru/honkai_star_rail/file/honkai_star_rail_russkaya_ozvuchka_dialogov_nejroset_hsr_ru_voiceover-1882053)
 [![Release](https://img.shields.io/github/v/release/VadimDeeptech/hsr-ru-voiceover?label=%D0%B2%D0%B5%D1%80%D1%81%D0%B8%D1%8F)](https://github.com/VadimDeeptech/hsr-ru-voiceover/releases)
-![Honkai: Star Rail 4.6](https://img.shields.io/badge/Honkai%3A%20Star%20Rail-4.6-blue)
+![Honkai: Star Rail 4.7](https://img.shields.io/badge/Honkai%3A%20Star%20Rail-4.7-blue)
 ![Windows](https://img.shields.io/badge/%D0%BF%D0%BB%D0%B0%D1%82%D1%84%D0%BE%D1%80%D0%BC%D0%B0-Windows-0078d4)
 [![License: MIT](https://img.shields.io/github/license/VadimDeeptech/hsr-ru-voiceover?label=%D0%BB%D0%B8%D1%86%D0%B5%D0%BD%D0%B7%D0%B8%D1%8F)](LICENSE)
 
@@ -224,8 +224,9 @@ python pipeline.py repack --gender m                  # 12. сборка pck
 
 ### Файлы без имени (unmapped)
 
-AnimeWwise кладёт в `<pck>\unmapped\` файлы, которых нет в его карте. Имя такого файла — хэш пути, он же wem_id в pck; сам путь из хэша не восстановить. Полные циклы начинаются с шага `unmapped` (`scripts\01_unmapped.py`): Whisper распознаёт речь, а распознанное сравнивается с английскими субтитрами записей VoiceConfig.
+AnimeWwise кладёт в `<pck>\unmapped\` файлы, которых нет в его карте. Имя такого файла — хэш пути, он же wem_id в pck; сам путь из хэша не восстановить. Полные циклы начинаются с шага `unmapped` (`scripts\01_unmapped.py`): сначала файлы сопоставляются по хэшу `VoicePath` из VoiceConfig, остальные — по речи: Whisper распознаёт её, а распознанное сравнивается с английскими субтитрами записей VoiceConfig.
 
+- Новые реплики патча, которых ещё нет в карте AnimeWwise, узнаются по хэшу `VoicePath` — точно и без распознавания речи (в `match.csv` колонка `method` = `hash`).
 - Запись без своего файла (новые квесты, которых ещё нет в карте) попадает в `mapping.csv` под виртуальным путём `<pck>\voice\...\<voicepath>.wav`. Настоящий файл записан в колонке `src`: из него берётся образец голоса, а его имя служит wem_id.
 - Копия строки, файл которой уже есть: в сборку идёт та же озвучка и под этим wem_id.
 - В `External_del_*.pck` файлы лежат по алфавиту имени, поэтому там помогает и порядок: файлы между двумя известными соседями — записи, лежащие между ними по алфавиту. Так различаются повторяющиеся реплики и варианты `_m`/`_f` с одинаковым текстом (`_f` всегда раньше `_m`). Если файлов в промежутке столько же, сколько записей, сопоставление однозначно и принимается, даже когда английская запись расходится с субтитром. Но если запись уверенно узнана по тексту в другом pck, а по порядку ей достался файл с непохожей речью, такой файл не берётся.

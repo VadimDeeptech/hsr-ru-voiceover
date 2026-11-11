@@ -35,3 +35,4 @@ side1_ytzx_giovanni_104_m;accept;;текст тот же
 chapter5_66_evanescia_113;accept;;заикание: Whisper растянул «the... the...» в «d-d-d-d»
 chapter5_64_ashveil_113;accept;;unmapped по порядку: Whisper слышит «Von Woch» = Vonwacq (так же в ashveil_102), между ashveil_111 и _114
 chapter5_65_youling_101;accept;;unmapped по порядку: Whisper слышит «White House» = Lighthouse, между yabuli_109 и youling_102
+vo_ambient_w5_v470_talk_sampo_102;keep;;субтитр в дампе 4.7 усечён («As part of the deal...»), полной фразы нет в TextMap; вернуться после обновления дампа
